@@ -9,11 +9,17 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as TskRouteImport } from './routes/tsk'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
 import { Route as ProjectsProjectIdSessionRouteImport } from './routes/projects/$projectId/session'
 
+const TskRoute = TskRouteImport.update({
+  id: '/tsk',
+  path: '/tsk',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
   path: '/login',
@@ -39,12 +45,14 @@ const ProjectsProjectIdSessionRoute =
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/tsk': typeof TskRoute
   '/projects': typeof ProjectsIndexRoute
   '/projects/$projectId/session': typeof ProjectsProjectIdSessionRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/tsk': typeof TskRoute
   '/projects': typeof ProjectsIndexRoute
   '/projects/$projectId/session': typeof ProjectsProjectIdSessionRoute
 }
@@ -52,18 +60,25 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/login': typeof LoginRoute
+  '/tsk': typeof TskRoute
   '/projects/': typeof ProjectsIndexRoute
   '/projects/$projectId/session': typeof ProjectsProjectIdSessionRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/projects' | '/projects/$projectId/session'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/tsk'
+    | '/projects'
+    | '/projects/$projectId/session'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/projects' | '/projects/$projectId/session'
+  to: '/' | '/login' | '/tsk' | '/projects' | '/projects/$projectId/session'
   id:
     | '__root__'
     | '/'
     | '/login'
+    | '/tsk'
     | '/projects/'
     | '/projects/$projectId/session'
   fileRoutesById: FileRoutesById
@@ -71,12 +86,20 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   LoginRoute: typeof LoginRoute
+  TskRoute: typeof TskRoute
   ProjectsIndexRoute: typeof ProjectsIndexRoute
   ProjectsProjectIdSessionRoute: typeof ProjectsProjectIdSessionRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/tsk': {
+      id: '/tsk'
+      path: '/tsk'
+      fullPath: '/tsk'
+      preLoaderRoute: typeof TskRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/login': {
       id: '/login'
       path: '/login'
@@ -111,6 +134,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   LoginRoute: LoginRoute,
+  TskRoute: TskRoute,
   ProjectsIndexRoute: ProjectsIndexRoute,
   ProjectsProjectIdSessionRoute: ProjectsProjectIdSessionRoute,
 }

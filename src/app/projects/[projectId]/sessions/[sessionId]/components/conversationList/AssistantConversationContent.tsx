@@ -1,5 +1,13 @@
 import { Trans } from "@lingui/react";
-import { ChevronDown, Lightbulb, Wrench } from "lucide-react";
+import {
+  ChevronDown,
+  Lightbulb,
+  Wrench,
+  ListTodo,
+  Circle,
+  CircleDot,
+  CheckCircle2,
+} from "lucide-react";
 import type { FC } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import {
@@ -24,6 +32,61 @@ import { ToolInputOneLine } from "./ToolInputOneLine";
 export const taskToolInputSchema = z.object({
   prompt: z.string(),
 });
+
+// TodoWrite schema and component
+const todoItemSchema = z.object({
+  content: z.string(),
+  status: z.enum(["pending", "in_progress", "completed"]),
+  activeForm: z.string().optional(),
+});
+
+const todoWriteInputSchema = z.object({
+  todos: z.array(todoItemSchema),
+});
+
+const TodoWriteDisplay: FC<{ input: unknown }> = ({ input }) => {
+  const parsed = todoWriteInputSchema.safeParse(input);
+  if (!parsed.success) return null;
+
+  const { todos } = parsed.data;
+
+  return (
+    <Card className="border-purple-200 bg-purple-50/50 dark:border-purple-800 dark:bg-purple-950/20 mb-2 p-0 overflow-hidden">
+      <div className="px-3 py-2">
+        <div className="flex items-center gap-2 mb-2">
+          <ListTodo className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+          <span className="text-sm font-medium">Tasks</span>
+        </div>
+        <div className="space-y-1">
+          {todos.map((todo, i) => (
+            <div key={i} className="flex items-start gap-2 text-sm">
+              {todo.status === "pending" && (
+                <Circle className="h-4 w-4 text-gray-400 flex-shrink-0 mt-0.5" />
+              )}
+              {todo.status === "in_progress" && (
+                <CircleDot className="h-4 w-4 text-yellow-500 flex-shrink-0 mt-0.5" />
+              )}
+              {todo.status === "completed" && (
+                <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0 mt-0.5" />
+              )}
+              <span
+                className={
+                  todo.status === "completed"
+                    ? "text-muted-foreground line-through"
+                    : ""
+                }
+              >
+                {todo.status === "in_progress"
+                  ? todo.activeForm || todo.content
+                  : todo.content}
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </Card>
+  );
+};
 
 export const AssistantConversationContent: FC<{
   content: AssistantMessageContent;
@@ -82,6 +145,11 @@ export const AssistantConversationContent: FC<{
   }
 
   if (content.type === "tool_use") {
+    // Special rendering for TodoWrite
+    if (content.name === "TodoWrite") {
+      return <TodoWriteDisplay input={content.input} />;
+    }
+
     const toolResult = getToolResult(content.id);
 
     const taskModal = (() => {

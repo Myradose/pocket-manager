@@ -91,7 +91,7 @@ export const MarkdownContent: FC<MarkdownContentProps> = ({
           p({ children, ...props }) {
             return (
               <p
-                className="mb-4 leading-7 text-foreground break-all"
+                className="mb-4 leading-7 text-foreground break-words"
                 {...props}
               >
                 {children}
