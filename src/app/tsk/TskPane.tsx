@@ -10,6 +10,7 @@ import {
   Info,
   Loader2,
   Monitor,
+  Square,
   SquareTerminal,
   Terminal,
   Trash2,
@@ -371,7 +372,11 @@ export const TskPane: FC<TskPaneProps> = ({
               className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"
               title={isActiveTask ? "Stop task" : "Delete task"}
             >
-              <Trash2 className="w-4 h-4" />
+              {isActiveTask ? (
+                <Square className="w-4 h-4 fill-current" />
+              ) : (
+                <Trash2 className="w-4 h-4" />
+              )}
             </button>
           )}
           <button
