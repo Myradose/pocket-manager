@@ -688,7 +688,7 @@ export const TskPane: FC<TskPaneProps> = ({
           <div className="flex items-center gap-2 text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
             <span className="text-sm">
-              {task.status === "STOPPING"
+              {userInitiatedStop || task.status === "STOPPING"
                 ? "Stopping task..."
                 : "Deleting task..."}
             </span>
