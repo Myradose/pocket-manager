@@ -52,30 +52,32 @@ export const XTerminal: FC<XTerminalProps> = ({
       fontFamily:
         "'Cascadia Code', 'Fira Code', Consolas, 'DejaVu Sans Mono', Menlo, monospace",
       fontWeight: "400",
-      fontWeightBold: "600",
+      fontWeightBold: "bold",
+      minimumContrastRatio: 4.5,
+      drawBoldTextInBrightColors: true,
+      scrollback: 1000,
       theme: {
-        background: "#0f1119",
-        foreground: "#d4d4d8",
-        cursor: "#a1a1aa",
-        cursorAccent: "#0f1119",
-        selectionBackground: "rgba(99, 102, 241, 0.3)",
-        selectionForeground: "#e4e4e7",
-        black: "#3f3f46",
-        red: "#f87171",
-        green: "#86efac",
-        yellow: "#fde68a",
-        blue: "#93c5fd",
-        magenta: "#d8b4fe",
-        cyan: "#67e8f9",
-        white: "#d4d4d8",
-        brightBlack: "#52525b",
-        brightRed: "#fca5a5",
-        brightGreen: "#a7f3d0",
-        brightYellow: "#fef08a",
-        brightBlue: "#bfdbfe",
-        brightMagenta: "#e9d5ff",
-        brightCyan: "#a5f3fc",
-        brightWhite: "#fafafa",
+        background: "#181818",
+        foreground: "#cccccc",
+        cursor: "#aeafad",
+        cursorAccent: "#181818",
+        selectionBackground: "rgba(38, 79, 120, 0.5)",
+        black: "#000000",
+        red: "#cd3131",
+        green: "#0dbc79",
+        yellow: "#e5e510",
+        blue: "#2472c8",
+        magenta: "#bc3fbc",
+        cyan: "#11a8cd",
+        white: "#e5e5e5",
+        brightBlack: "#666666",
+        brightRed: "#f14c4c",
+        brightGreen: "#23d18b",
+        brightYellow: "#f5f543",
+        brightBlue: "#3b8eea",
+        brightMagenta: "#d670d6",
+        brightCyan: "#29b8db",
+        brightWhite: "#e5e5e5",
       },
     });
 
@@ -249,5 +251,12 @@ export const XTerminal: FC<XTerminalProps> = ({
     }
   }, [visible]);
 
-  return <div ref={containerRef} className="terminal-container" />;
+  return (
+    <>
+      <div ref={containerRef} className="terminal-container" />
+      <div className="terminal-loading">
+        <span className="terminal-loading-cursor">▋</span>
+      </div>
+    </>
+  );
 };

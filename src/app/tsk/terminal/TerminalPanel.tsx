@@ -273,7 +273,7 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
       </div>
 
       {/* Terminal area */}
-      <div className="flex-1 relative">
+      <div className="flex-1 relative" style={{ background: "#181818" }}>
         {tabs.map((tab) => (
           <div
             key={tab.id}

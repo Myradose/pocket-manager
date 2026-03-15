@@ -1,7 +1,7 @@
 @import "@xterm/xterm/css/xterm.css";
 
 .terminal-container {
-  --terminal-bg: #0f1119;
+  --terminal-bg: #181818;
 
   position: absolute;
   inset: 0;
@@ -28,6 +28,29 @@
 .terminal-container .xterm-viewport,
 .terminal-container .xterm-screen {
   background-color: var(--terminal-bg) !important;
+}
+
+.terminal-loading {
+  position: absolute;
+  inset: 0;
+  padding: 8px 4px 4px 8px;
+  color: rgba(255, 255, 255, 0.3);
+  font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
+  font-size: 13px;
+  pointer-events: none;
+}
+
+.terminal-loading-cursor {
+  animation: terminal-blink 1s step-end infinite;
+}
+
+@keyframes terminal-blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+.terminal-container--visible + .terminal-loading {
+  display: none;
 }
 
 .terminal-container .xterm-viewport {
@@ -69,8 +92,8 @@
   gap: 1px;
   padding: 0 4px;
   min-height: 34px;
-  background: #16171e;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: #181818;
+  border-bottom: 1px solid #2B2B2B;
   user-select: none;
 }
 
@@ -95,7 +118,7 @@
 
 .terminal-tab--active {
   color: rgba(255, 255, 255, 0.9);
-  background: var(--terminal-bg, #0f1119);
+  background: #1F1F1F;
 }
 
 .terminal-tab--active::after {
@@ -105,7 +128,7 @@
   left: 0;
   right: 0;
   height: 1px;
-  background: var(--terminal-bg, #0f1119);
+  background: #1F1F1F;
 }
 
 .terminal-tab__close {
