@@ -7,6 +7,12 @@
   inset: 0;
   overflow: hidden;
   background: var(--terminal-bg);
+  opacity: 0;
+}
+
+.terminal-container--visible {
+  opacity: 1;
+  transition: opacity 0.15s ease;
 }
 
 .terminal-container .xterm {

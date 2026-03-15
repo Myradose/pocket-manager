@@ -18,7 +18,12 @@ export type TerminalSession = {
 const LayerImpl = Effect.gen(function* () {
   const sessions = new Map<string, TerminalSession>();
 
-  const createSession = (taskId: string, containerId: string) =>
+  const createSession = (
+    taskId: string,
+    containerId: string,
+    cols?: number,
+    rows?: number,
+  ) =>
     Effect.tryPromise({
       try: async () => {
         // node-pty is externalized by esbuild (--packages=external)
@@ -44,8 +49,8 @@ const LayerImpl = Effect.gen(function* () {
           ],
           {
             name: "xterm-256color",
-            cols: 80,
-            rows: 24,
+            cols: cols ?? 80,
+            rows: rows ?? 24,
             // biome-ignore lint/style/noProcessEnv: node-pty requires raw env for Docker exec
             env: process.env,
           },

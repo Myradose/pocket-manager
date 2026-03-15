@@ -8,9 +8,13 @@ const LayerImpl = Effect.gen(function* () {
   const terminalSessionService = yield* TerminalSessionService;
   const tskService = yield* TskService;
 
-  const createTerminal = (options: { taskId: string }) =>
+  const createTerminal = (options: {
+    taskId: string;
+    cols?: number;
+    rows?: number;
+  }) =>
     Effect.gen(function* () {
-      const { taskId } = options;
+      const { taskId, cols, rows } = options;
 
       // Look up the task to get its container_id
       const tasks = yield* tskService.listTasks();
@@ -31,7 +35,12 @@ const LayerImpl = Effect.gen(function* () {
       }
 
       const result = yield* Effect.either(
-        terminalSessionService.createSession(taskId, task.container_id),
+        terminalSessionService.createSession(
+          taskId,
+          task.container_id,
+          cols,
+          rows,
+        ),
       );
 
       if (Either.isLeft(result)) {

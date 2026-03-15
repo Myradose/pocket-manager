@@ -7,27 +7,35 @@ import { type FC, useEffect, useRef } from "react";
 import "./terminal.css";
 
 type XTerminalProps = {
-  sessionId: string;
+  sessionId: string | null;
   visible: boolean;
+  onMeasured?: (cols: number, rows: number) => void;
   onSessionDead?: () => void;
 };
 
 export const XTerminal: FC<XTerminalProps> = ({
   sessionId,
   visible,
+  onMeasured,
   onSessionDead,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
+  const wsRef = useRef<WebSocket | null>(null);
   const onSessionDeadRef = useRef(onSessionDead);
+  const onMeasuredRef = useRef(onMeasured);
   onSessionDeadRef.current = onSessionDead;
+  onMeasuredRef.current = onMeasured;
 
+  // Phase 1: Create terminal, measure exact dimensions.
+  // Runs once on mount — independent of sessionId.
   useEffect(() => {
     if (!containerRef.current) return;
-
+    const container = containerRef.current;
     let cancelled = false;
-    let ws: WebSocket | null = null;
+
+    container.classList.remove("terminal-container--visible");
 
     const terminal = new Terminal({
       allowProposedApi: true,
@@ -46,7 +54,6 @@ export const XTerminal: FC<XTerminalProps> = ({
         cursorAccent: "#0f1119",
         selectionBackground: "rgba(99, 102, 241, 0.3)",
         selectionForeground: "#e4e4e7",
-        // Normal colors
         black: "#3f3f46",
         red: "#f87171",
         green: "#86efac",
@@ -55,7 +62,6 @@ export const XTerminal: FC<XTerminalProps> = ({
         magenta: "#d8b4fe",
         cyan: "#67e8f9",
         white: "#d4d4d8",
-        // Bright colors
         brightBlack: "#52525b",
         brightRed: "#fca5a5",
         brightGreen: "#a7f3d0",
@@ -75,7 +81,7 @@ export const XTerminal: FC<XTerminalProps> = ({
     terminal.loadAddon(webLinksAddon);
     terminal.loadAddon(unicode11Addon);
     terminal.unicode.activeVersion = "11";
-    terminal.open(containerRef.current);
+    terminal.open(container);
 
     fitAddonRef.current = fitAddon;
     terminalRef.current = terminal;
@@ -90,87 +96,123 @@ export const XTerminal: FC<XTerminalProps> = ({
       // WebGL not available, fall back to DOM renderer
     }
 
-    requestAnimationFrame(() => {
-      fitAddon.fit();
+    // Wait for fonts, remeasure, fit, then report exact dimensions so the
+    // parent can create the PTY session at the right size.
+    document.fonts.ready.then(() => {
+      if (cancelled) return;
+      const size = terminal.options.fontSize ?? 13;
+      terminal.options.fontSize = size + 0.001;
+      terminal.options.fontSize = size;
+      try {
+        fitAddon.fit();
+      } catch {
+        // ignore fit errors during setup
+      }
+      onMeasuredRef.current?.(terminal.cols, terminal.rows);
     });
 
-    // Connect WebSocket to existing session
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/api/terminals/${sessionId}/ws`;
-    ws = new WebSocket(wsUrl);
-
-    ws.onopen = () => {
-      if (!cancelled) {
-        fitAddon.fit();
-        const cols = terminal.cols;
-        const rows = terminal.rows;
-        // Bounce resize after a delay to let tmux start (fresh sessions)
-        // or to force tmux to redraw (reconnected sessions).
-        // First resize to cols-1, then to real size triggers SIGWINCH → full redraw.
-        setTimeout(() => {
-          if (cancelled || ws?.readyState !== WebSocket.OPEN) return;
-          ws.send(
-            `\x00${JSON.stringify({ type: "resize", cols: Math.max(1, cols - 1), rows })}`,
-          );
-          setTimeout(() => {
-            if (cancelled || ws?.readyState !== WebSocket.OPEN) return;
-            ws.send(`\x00${JSON.stringify({ type: "resize", cols, rows })}`);
-          }, 100);
-        }, 500);
-      }
-    };
-
-    ws.onmessage = (event) => {
-      terminal.write(
-        typeof event.data === "string" ? event.data : String(event.data),
-      );
-    };
-
-    ws.onclose = () => {
-      // If the server closed the connection (not client cleanup), the session is dead
-      if (!cancelled) {
-        onSessionDeadRef.current?.();
-      }
-    };
-
+    // Forward terminal input to the WebSocket (if connected).
     terminal.onData((data) => {
+      const ws = wsRef.current;
       if (ws?.readyState === WebSocket.OPEN) {
         ws.send(data);
       }
     });
 
-    // Handle resize
+    // Keep the terminal fitted and forward resize to the backend.
     const resizeObserver = new ResizeObserver(() => {
       try {
         fitAddon.fit();
+        const ws = wsRef.current;
         if (ws?.readyState === WebSocket.OPEN) {
-          const dims = {
-            type: "resize",
-            cols: terminal.cols,
-            rows: terminal.rows,
-          };
-          ws.send(`\x00${JSON.stringify(dims)}`);
+          ws.send(
+            `\x00${JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows })}`,
+          );
         }
       } catch {
         // Ignore resize errors during cleanup
       }
     });
-
-    resizeObserver.observe(containerRef.current);
+    resizeObserver.observe(container);
 
     return () => {
       cancelled = true;
       resizeObserver.disconnect();
-      if (ws) {
-        ws.close();
-      }
+      container.classList.remove("terminal-container--visible");
       terminal.dispose();
       fitAddonRef.current = null;
       terminalRef.current = null;
     };
+  }, []);
+
+  // Phase 2: Connect WebSocket once a sessionId is available.
+  useEffect(() => {
+    if (!sessionId || !terminalRef.current || !containerRef.current) return;
+    const terminal = terminalRef.current;
+    const container = containerRef.current;
+    let cancelled = false;
+
+    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+    const wsUrl = `${protocol}//${window.location.host}/api/terminals/${sessionId}/ws`;
+    const ws = new WebSocket(wsUrl);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      if (cancelled) return;
+      // Send exact dimensions so the PTY matches the terminal.
+      ws.send(
+        `\x00${JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows })}`,
+      );
+      // Bounce resize after a delay to force tmux to redraw on reconnect.
+      setTimeout(() => {
+        if (cancelled || ws.readyState !== WebSocket.OPEN) return;
+        ws.send(
+          `\x00${JSON.stringify({ type: "resize", cols: Math.max(1, terminal.cols - 1), rows: terminal.rows })}`,
+        );
+        setTimeout(() => {
+          if (cancelled || ws.readyState !== WebSocket.OPEN) return;
+          ws.send(
+            `\x00${JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows })}`,
+          );
+        }, 100);
+      }, 500);
+    };
+
+    let revealScheduled = false;
+    ws.onmessage = (event) => {
+      terminal.write(
+        typeof event.data === "string" ? event.data : String(event.data),
+      );
+      // Reveal on first data — terminal is already fitted at exact dimensions.
+      if (!revealScheduled) {
+        revealScheduled = true;
+        document.fonts.ready.then(() => {
+          if (cancelled) return;
+          try {
+            fitAddonRef.current?.fit();
+          } catch {
+            // ignore fit errors during setup
+          }
+          container.classList.add("terminal-container--visible");
+        });
+      }
+    };
+
+    ws.onclose = () => {
+      if (!cancelled) {
+        onSessionDeadRef.current?.();
+      }
+    };
+
+    return () => {
+      cancelled = true;
+      wsRef.current = null;
+      container.classList.remove("terminal-container--visible");
+      ws.close();
+    };
   }, [sessionId]);
 
-  // Re-fit when becoming visible
+  // Re-fit when becoming visible (e.g. switching tabs).
   useEffect(() => {
     if (visible && fitAddonRef.current) {
       requestAnimationFrame(() => {

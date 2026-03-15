@@ -6,7 +6,7 @@ import "./terminal.css";
 
 type Tab = {
   id: string;
-  sessionId: string;
+  sessionId: string | null;
   name: string;
 };
 
@@ -18,9 +18,10 @@ type TerminalPanelProps = {
 export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
   const [tabs, setTabs] = useState<Tab[]>([]);
   const [activeTabId, setActiveTabId] = useState<string | null>(null);
-  const [creating, setCreating] = useState(false);
   const [initialized, setInitialized] = useState(false);
   const initRef = useRef(false);
+  // Track which tabs have a pending session creation to avoid duplicates.
+  const creatingSessions = useRef(new Set<string>());
 
   // On mount, recover existing sessions from the backend
   useEffect(() => {
@@ -57,34 +58,49 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
     recover();
   }, [taskId]);
 
-  const createTab = useCallback(async () => {
-    if (creating) return;
-    setCreating(true);
-    try {
-      const response = await honoClient.api.terminals.$post({
-        json: { taskId },
-      });
-      if (!response.ok) return;
-      const data = (await response.json()) as { id: string };
-      setTabs((prev) => {
-        const tabNumber = prev.length + 1;
-        const newTab: Tab = {
-          id: data.id,
-          sessionId: data.id,
-          name: `Shell ${tabNumber}`,
-        };
-        setActiveTabId(newTab.id);
-        return [...prev, newTab];
-      });
-    } finally {
-      setCreating(false);
-    }
-  }, [taskId, creating]);
+  // Add a tab immediately (synchronous) — XTerminal mounts, measures exact
+  // dimensions via onMeasured, which then triggers session creation.
+  const createTab = useCallback(() => {
+    const tabId = crypto.randomUUID();
+    setTabs((prev) => {
+      const tabNumber = prev.length + 1;
+      return [
+        ...prev,
+        { id: tabId, sessionId: null, name: `Shell ${tabNumber}` },
+      ];
+    });
+    setActiveTabId(tabId);
+  }, []);
+
+  // Called by XTerminal after it measures exact cols/rows via FitAddon.
+  // Creates the PTY session at those dimensions so tmux starts at the right size.
+  const handleMeasured = useCallback(
+    async (tabId: string, cols: number, rows: number) => {
+      if (creatingSessions.current.has(tabId)) return;
+      creatingSessions.current.add(tabId);
+      try {
+        const response = await honoClient.api.terminals.$post({
+          json: { taskId, cols, rows },
+        });
+        if (!response.ok) {
+          creatingSessions.current.delete(tabId);
+          return;
+        }
+        const data = (await response.json()) as { id: string };
+        setTabs((prev) =>
+          prev.map((t) => (t.id === tabId ? { ...t, sessionId: data.id } : t)),
+        );
+      } catch {
+        creatingSessions.current.delete(tabId);
+      }
+    },
+    [taskId],
+  );
 
   const closeTab = useCallback(
     async (tabId: string) => {
       const tab = tabs.find((t) => t.id === tabId);
-      if (tab) {
+      if (tab?.sessionId) {
         try {
           await honoClient.api.terminals[":sessionId"].$delete({
             param: { sessionId: tab.sessionId },
@@ -123,10 +139,10 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
 
   // Auto-create first tab after initialization if no sessions were recovered
   useEffect(() => {
-    if (initialized && tabs.length === 0 && !creating) {
+    if (initialized && tabs.length === 0) {
       createTab();
     }
-  }, [initialized, tabs.length, creating, createTab]);
+  }, [initialized, tabs.length, createTab]);
 
   return (
     <div className="flex flex-col h-full">
@@ -163,7 +179,6 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
           type="button"
           className="terminal-tab-new"
           onClick={createTab}
-          disabled={creating}
           title="New terminal"
         >
           <Plus className="w-3.5 h-3.5" />
@@ -181,6 +196,7 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
             <XTerminal
               sessionId={tab.sessionId}
               visible={visible && activeTabId === tab.id}
+              onMeasured={(cols, rows) => handleMeasured(tab.id, cols, rows)}
               onSessionDead={() => handleSessionDead(tab.id)}
             />
           </div>
@@ -190,9 +206,7 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
             className="flex items-center justify-center h-full"
             style={{ color: "rgba(255,255,255,0.35)" }}
           >
-            <p className="text-sm">
-              {creating ? "Connecting..." : "No terminal sessions"}
-            </p>
+            <p className="text-sm">No terminal sessions</p>
           </div>
         )}
       </div>
