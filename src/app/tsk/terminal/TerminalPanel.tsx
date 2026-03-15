@@ -22,6 +22,7 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
   const initRef = useRef(false);
   // Track which tabs have a pending session creation to avoid duplicates.
   const creatingSessions = useRef(new Set<string>());
+  const nextTabNumber = useRef(1);
 
   // On mount, recover existing sessions from the backend
   useEffect(() => {
@@ -45,9 +46,10 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
               sessionId: s.id,
               name: `Shell ${i + 1}`,
             }));
+            nextTabNumber.current = existing.length + 1;
             setTabs(recoveredTabs);
-            const last = recoveredTabs[recoveredTabs.length - 1];
-            if (last) setActiveTabId(last.id);
+            const first = recoveredTabs[0];
+            if (first) setActiveTabId(first.id);
           }
         }
       } catch {
@@ -62,13 +64,11 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
   // dimensions via onMeasured, which then triggers session creation.
   const createTab = useCallback(() => {
     const tabId = crypto.randomUUID();
-    setTabs((prev) => {
-      const tabNumber = prev.length + 1;
-      return [
-        ...prev,
-        { id: tabId, sessionId: null, name: `Shell ${tabNumber}` },
-      ];
-    });
+    const tabNumber = nextTabNumber.current++;
+    setTabs((prev) => [
+      ...prev,
+      { id: tabId, sessionId: null, name: `Shell ${tabNumber}` },
+    ]);
     setActiveTabId(tabId);
   }, []);
 
@@ -196,7 +196,11 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
             <XTerminal
               sessionId={tab.sessionId}
               visible={visible && activeTabId === tab.id}
-              onMeasured={(cols, rows) => handleMeasured(tab.id, cols, rows)}
+              onMeasured={
+                tab.sessionId === null
+                  ? (cols, rows) => handleMeasured(tab.id, cols, rows)
+                  : undefined
+              }
               onSessionDead={() => handleSessionDead(tab.id)}
             />
           </div>
