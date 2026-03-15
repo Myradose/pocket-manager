@@ -135,6 +135,117 @@ const formatRelativeTime = (dateString: string | null): string => {
   return date.toLocaleDateString();
 };
 
+const splitModeOptions: {
+  mode: GridViewMode;
+  icon: typeof Terminal;
+  label: string;
+}[] = [
+  { mode: "logs", icon: Terminal, label: "Logs" },
+  { mode: "frontend", icon: ExternalLink, label: "Frontend" },
+  { mode: "vnc", icon: Monitor, label: "VNC" },
+  { mode: "terminal", icon: SquareTerminal, label: "Terminal" },
+];
+
+const SplitPane: FC<{
+  mode: GridViewMode;
+  onModeChange: (mode: GridViewMode) => void;
+  task: TskTask;
+  // biome-ignore lint/suspicious/noExplicitAny: conversations type comes from parsed JSONL
+  conversations: any[];
+  getToolResult: () => undefined;
+  ToolCallsOverlay: FC;
+  side: "left" | "right";
+}> = ({
+  mode,
+  onModeChange,
+  task,
+  conversations,
+  getToolResult,
+  ToolCallsOverlay,
+  side,
+}) => {
+  const borderClass = side === "left" ? "border-r" : "";
+
+  const content = (() => {
+    switch (mode) {
+      case "logs":
+        return (
+          <div className="h-full overflow-auto p-2">
+            {conversations.length > 0 ? (
+              <ConversationList
+                conversations={conversations}
+                getToolResult={getToolResult}
+                projectId={task.id}
+                sessionId={task.id}
+                scheduledJobs={[]}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-muted-foreground text-sm">
+                  Waiting for agent output...
+                </p>
+              </div>
+            )}
+          </div>
+        );
+      case "frontend":
+        return task.frontend_url ? (
+          <iframe
+            src={task.frontend_url}
+            className="w-full h-full border-0 bg-white"
+            title={`${task.name} frontend`}
+          />
+        ) : (
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+            No frontend URL
+          </div>
+        );
+      case "vnc":
+        return task.vnc_url ? (
+          <div className="relative h-full">
+            <iframe
+              src={task.vnc_url}
+              className="w-full h-full border-0"
+              title={`${task.name} VNC`}
+            />
+            <ToolCallsOverlay />
+          </div>
+        ) : (
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+            No VNC URL
+          </div>
+        );
+      case "terminal":
+        return task.container_id ? (
+          <TerminalPanel taskId={task.id} visible />
+        ) : (
+          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+            No container
+          </div>
+        );
+    }
+  })();
+
+  return (
+    <div className={`relative h-full ${borderClass}`}>
+      {content}
+      <div className="absolute top-1 right-1 flex gap-0.5 bg-background/80 backdrop-blur-sm rounded p-0.5 z-10">
+        {splitModeOptions.map((opt) => (
+          <button
+            key={opt.mode}
+            type="button"
+            onClick={() => onModeChange(opt.mode)}
+            className={`p-1 rounded ${mode === opt.mode ? "bg-muted" : "hover:bg-muted/50"}`}
+            title={opt.label}
+          >
+            <opt.icon className="w-3 h-3" />
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 export const TskPane: FC<TskPaneProps> = ({
   task,
   isGridView = false,
@@ -188,6 +299,8 @@ export const TskPane: FC<TskPaneProps> = ({
 
   // Track if split mode is active (detail view only feature)
   const [isSplitMode, setIsSplitMode] = useState(false);
+  const [splitLeft, setSplitLeft] = useState<GridViewMode>("logs");
+  const [splitRight, setSplitRight] = useState<GridViewMode>("frontend");
   const [showInfo, setShowInfo] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -241,6 +354,22 @@ export const TskPane: FC<TskPaneProps> = ({
   };
 
   const handleSplitMode = () => {
+    if (!isSplitMode) {
+      // Set defaults: prefer frontend+vnc, fall back to logs+frontend, etc.
+      if (task.frontend_url && task.vnc_url) {
+        setSplitLeft("frontend");
+        setSplitRight("vnc");
+      } else if (task.frontend_url) {
+        setSplitLeft("logs");
+        setSplitRight("frontend");
+      } else if (task.vnc_url) {
+        setSplitLeft("logs");
+        setSplitRight("vnc");
+      } else {
+        setSplitLeft("logs");
+        setSplitRight("terminal");
+      }
+    }
     setIsSplitMode(true);
   };
 
@@ -492,16 +621,14 @@ export const TskPane: FC<TskPaneProps> = ({
                     <SquareTerminal className="w-4 h-4" />
                   </button>
                 )}
-              {task.frontend_url && task.vnc_url && (
-                <button
-                  type="button"
-                  onClick={handleSplitMode}
-                  className={`p-1.5 rounded hover:bg-muted ${viewMode === "split" ? "bg-muted" : ""}`}
-                  title="Split view"
-                >
-                  <Columns2 className="w-4 h-4" />
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={handleSplitMode}
+                className={`p-1.5 rounded hover:bg-muted ${viewMode === "split" ? "bg-muted" : ""}`}
+                title="Split view"
+              >
+                <Columns2 className="w-4 h-4" />
+              </button>
             </>
           )}
         </div>
@@ -704,23 +831,24 @@ export const TskPane: FC<TskPaneProps> = ({
 
         {viewMode === "split" && (
           <div className="grid grid-cols-2 h-full">
-            {task.frontend_url && (
-              <iframe
-                src={task.frontend_url}
-                className="w-full h-full border-0 border-r bg-white"
-                title={`${task.name} frontend`}
-              />
-            )}
-            {task.vnc_url && (
-              <div className="relative h-full">
-                <iframe
-                  src={task.vnc_url}
-                  className="w-full h-full border-0"
-                  title={`${task.name} VNC`}
-                />
-                <ToolCallsOverlay />
-              </div>
-            )}
+            <SplitPane
+              mode={splitLeft}
+              onModeChange={setSplitLeft}
+              task={task}
+              conversations={conversations}
+              getToolResult={getToolResult}
+              ToolCallsOverlay={ToolCallsOverlay}
+              side="left"
+            />
+            <SplitPane
+              mode={splitRight}
+              onModeChange={setSplitRight}
+              task={task}
+              conversations={conversations}
+              getToolResult={getToolResult}
+              ToolCallsOverlay={ToolCallsOverlay}
+              side="right"
+            />
           </div>
         )}
 
