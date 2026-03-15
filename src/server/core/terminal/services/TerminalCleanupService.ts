@@ -1,21 +1,12 @@
-import { Context, Duration, Effect, Layer, Schedule } from "effect";
+import { Context, Effect, Layer } from "effect";
 import type { InferEffect } from "../../../lib/effect/types";
-import { TerminalSessionService } from "./TerminalSessionService";
 
-const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-const CLEANUP_INTERVAL = Duration.seconds(30);
-
+// With tmux as the source of truth, idle PTY cleanup is no longer needed.
+// tmux sessions persist intentionally and PTY attachments are cleaned up
+// via the grace period on WS disconnect. This service is kept as a no-op
+// to avoid breaking the dependency chain.
 const LayerImpl = Effect.gen(function* () {
-  const terminalSessionService = yield* TerminalSessionService;
-
-  const startCleanup = () =>
-    Effect.gen(function* () {
-      yield* terminalSessionService.cleanupIdleSessions(IDLE_TIMEOUT_MS);
-    }).pipe(
-      Effect.repeat(Schedule.spaced(CLEANUP_INTERVAL)),
-      Effect.catchAll(() => Effect.void),
-      Effect.fork,
-    );
+  const startCleanup = () => Effect.void;
 
   return {
     startCleanup,

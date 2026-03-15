@@ -30,23 +30,20 @@ const mockTskServiceLayer = Layer.mock(TskService, {
 });
 
 const mockTerminalSessionServiceLayer = Layer.mock(TerminalSessionService, {
-  createSession: () => Effect.succeed({ sessionId: "session-123" }),
-  getSession: () => Effect.succeed(null),
-  destroySession: () => Effect.succeed(undefined),
-  listSessions: () =>
-    Effect.succeed([
-      {
-        id: "session-123",
-        taskId: "task1",
-        containerId: "abc123container",
-        label: undefined,
-        createdAt: "2026-01-01T00:00:00Z",
-      },
-    ]),
-  markForCleanup: () => Effect.succeed(undefined),
-  cancelCleanup: () => Effect.succeed(undefined),
-  updateActivity: () => Effect.succeed(undefined),
-  cleanupIdleSessions: () => Effect.succeed(undefined),
+  listTmuxSessions: () => Effect.succeed(["claude", "shell-1"]),
+  ensureTmuxSession: () => Effect.succeed({ name: "claude", created: false }),
+  destroyTmuxSession: () => Effect.succeed(undefined),
+  attachPty: () =>
+    Effect.succeed({
+      containerId: "abc123container",
+      tmuxSessionName: "claude",
+      taskId: "task1",
+      pty: {},
+    }),
+  getPtyAttachment: () => Effect.succeed(null),
+  detachPty: () => Effect.succeed(undefined),
+  markPtyForCleanup: () => Effect.succeed(undefined),
+  cancelPtyCleanup: () => Effect.succeed(undefined),
 });
 
 const testLayer = TerminalController.Live.pipe(
@@ -55,25 +52,25 @@ const testLayer = TerminalController.Live.pipe(
 );
 
 describe("TerminalController", () => {
-  test("createTerminal returns 200 with sessionId for valid task", async () => {
+  test("ensureTerminal returns 200 for valid task", async () => {
     const controller = await Effect.runPromise(
       TerminalController.pipe(Effect.provide(testLayer)),
     );
 
     const result = await Effect.runPromise(
-      controller.createTerminal({ taskId: "task1" }),
+      controller.ensureTerminal({ taskId: "task1", name: "claude" }),
     );
 
     expect(result.status).toBe(200);
   });
 
-  test("createTerminal returns 404 for unknown task", async () => {
+  test("ensureTerminal returns 404 for unknown task", async () => {
     const controller = await Effect.runPromise(
       TerminalController.pipe(Effect.provide(testLayer)),
     );
 
     const result = await Effect.runPromise(
-      controller.createTerminal({ taskId: "nonexistent" }),
+      controller.ensureTerminal({ taskId: "nonexistent", name: "claude" }),
     );
 
     expect(result.status).toBe(404);
@@ -84,7 +81,9 @@ describe("TerminalController", () => {
       TerminalController.pipe(Effect.provide(testLayer)),
     );
 
-    const result = await Effect.runPromise(controller.listTerminals());
+    const result = await Effect.runPromise(
+      controller.listTerminals({ taskId: "task1" }),
+    );
 
     expect(result.status).toBe(200);
     expect(Array.isArray(result.response)).toBe(true);
@@ -96,7 +95,7 @@ describe("TerminalController", () => {
     );
 
     const result = await Effect.runPromise(
-      controller.destroyTerminal({ sessionId: "session-123" }),
+      controller.destroyTerminal({ taskId: "task1", name: "claude" }),
     );
 
     expect(result.status).toBe(200);

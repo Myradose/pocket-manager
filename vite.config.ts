@@ -29,7 +29,7 @@ export default defineConfig({
   server: {
     port: parseInt(process.env.DEV_FE_PORT ?? "3400", 10),
     proxy: {
-      "/api/terminals": {
+      "/api/tsk/tasks": {
         target: `http://localhost:${process.env.DEV_BE_PORT ?? "3401"}`,
         ws: true,
       },

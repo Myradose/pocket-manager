@@ -1,17 +1,12 @@
 import { z } from "zod";
 
-export const createTerminalRequestSchema = z.object({
-  taskId: z.string().min(1),
+export const ensureTerminalSchema = z.object({
+  name: z
+    .string()
+    .min(1)
+    .regex(/^[a-zA-Z0-9_-]+$/),
   cols: z.number().int().min(1).optional(),
   rows: z.number().int().min(1).optional(),
-  label: z.string().optional(),
 });
 
-export type CreateTerminalRequest = z.infer<typeof createTerminalRequestSchema>;
-
-export type TerminalSessionResponse = {
-  id: string;
-  taskId: string;
-  containerId: string;
-  createdAt: string;
-};
+export type EnsureTerminalRequest = z.infer<typeof ensureTerminalSchema>;

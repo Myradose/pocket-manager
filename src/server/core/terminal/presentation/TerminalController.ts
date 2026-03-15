@@ -8,40 +8,47 @@ const LayerImpl = Effect.gen(function* () {
   const terminalSessionService = yield* TerminalSessionService;
   const tskService = yield* TskService;
 
-  const createTerminal = (options: {
-    taskId: string;
-    cols?: number;
-    rows?: number;
-    label?: string;
-  }) =>
+  const resolveContainerId = (taskId: string) =>
     Effect.gen(function* () {
-      const { taskId, cols, rows, label } = options;
-
-      // Look up the task to get its container_id
       const tasks = yield* tskService.listTasks();
       const task = tasks.find((t) => t.id === taskId);
-
-      if (!task) {
+      if (!task)
         return {
+          ok: false,
           status: 404,
-          response: { error: "Task not found" },
-        } as const satisfies ControllerResponse;
-      }
-
-      if (!task.container_id) {
+          error: "Task not found",
+        } as const;
+      if (!task.container_id)
         return {
+          ok: false,
           status: 400,
-          response: { error: "Task has no running container" },
+          error: "Task has no running container",
+        } as const;
+      return { ok: true, containerId: task.container_id } as const;
+    });
+
+  const ensureTerminal = (options: {
+    taskId: string;
+    name: string;
+    cols?: number;
+    rows?: number;
+  }) =>
+    Effect.gen(function* () {
+      const { taskId, name, cols, rows } = options;
+      const resolved = yield* resolveContainerId(taskId);
+      if (!resolved.ok) {
+        return {
+          status: resolved.status,
+          response: { error: resolved.error },
         } as const satisfies ControllerResponse;
       }
 
       const result = yield* Effect.either(
-        terminalSessionService.createSession(
-          taskId,
-          task.container_id,
+        terminalSessionService.ensureTmuxSession(
+          resolved.containerId,
+          name,
           cols,
           rows,
-          label,
         ),
       );
 
@@ -53,44 +60,71 @@ const LayerImpl = Effect.gen(function* () {
         return {
           status: 500,
           response: {
-            error: `Failed to create terminal session: ${errorMsg}`,
+            error: `Failed to ensure terminal session: ${errorMsg}`,
           },
         } as const satisfies ControllerResponse;
       }
 
       return {
         status: 200,
-        response: {
-          id: result.right.sessionId,
-          taskId,
-          containerId: task.container_id,
-          createdAt: new Date().toISOString(),
-        },
+        response: result.right,
       } as const satisfies ControllerResponse;
     });
 
-  const destroyTerminal = (options: { sessionId: string }) =>
+  const listTerminals = (options: { taskId: string }) =>
     Effect.gen(function* () {
-      yield* terminalSessionService.destroySession(options.sessionId);
-      return {
-        status: 200,
-        response: { success: true },
-      } as const satisfies ControllerResponse;
-    });
+      const resolved = yield* resolveContainerId(options.taskId);
+      if (!resolved.ok) {
+        return {
+          status: resolved.status,
+          response: { error: resolved.error },
+        } as const satisfies ControllerResponse;
+      }
 
-  const listTerminals = () =>
-    Effect.gen(function* () {
-      const sessions = yield* terminalSessionService.listSessions();
+      const tmuxSessions = yield* terminalSessionService.listTmuxSessions(
+        resolved.containerId,
+      );
+
+      const sessions = tmuxSessions.map((name) => {
+        const attachment = Effect.runSync(
+          terminalSessionService.getPtyAttachment(resolved.containerId, name),
+        );
+        return { name, attached: attachment !== null };
+      });
+
       return {
         status: 200,
         response: sessions,
       } as const satisfies ControllerResponse;
     });
 
+  const destroyTerminal = (options: { taskId: string; name: string }) =>
+    Effect.gen(function* () {
+      const resolved = yield* resolveContainerId(options.taskId);
+      if (!resolved.ok) {
+        return {
+          status: resolved.status,
+          response: { error: resolved.error },
+        } as const satisfies ControllerResponse;
+      }
+
+      yield* Effect.either(
+        terminalSessionService.destroyTmuxSession(
+          resolved.containerId,
+          options.name,
+        ),
+      );
+
+      return {
+        status: 200,
+        response: { success: true },
+      } as const satisfies ControllerResponse;
+    });
+
   return {
-    createTerminal,
-    destroyTerminal,
+    ensureTerminal,
     listTerminals,
+    destroyTerminal,
   };
 });
 

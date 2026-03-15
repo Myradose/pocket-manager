@@ -7,39 +7,28 @@ import { type FC, useEffect, useRef } from "react";
 import "./terminal.css";
 
 type XTerminalProps = {
-  sessionId: string | null;
+  taskId: string;
+  tmuxSessionName: string;
   visible: boolean;
-  onMeasured?: (cols: number, rows: number) => void;
-  onSessionDead?: () => void;
-  /** Command to auto-run when a NEW session connects (not on recovery). */
   autoCommand?: string;
 };
 
 export const XTerminal: FC<XTerminalProps> = ({
-  sessionId,
+  taskId,
+  tmuxSessionName,
   visible,
-  onMeasured,
-  onSessionDead,
   autoCommand,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const onSessionDeadRef = useRef(onSessionDead);
-  const onMeasuredRef = useRef(onMeasured);
-  onSessionDeadRef.current = onSessionDead;
-  onMeasuredRef.current = onMeasured;
-  // Track whether this is a freshly created session (sessionId went from null → non-null)
-  // vs a recovered session (sessionId was non-null on mount). Only fresh sessions get autoCommand.
-  const isNewSessionRef = useRef(sessionId === null);
 
   // Phase 1: Create terminal, measure exact dimensions.
-  // Runs once on mount — independent of sessionId.
+  // Runs once on mount.
   useEffect(() => {
     if (!containerRef.current) return;
     const container = containerRef.current;
-    let cancelled = false;
 
     container.classList.remove("terminal-container--visible");
 
@@ -104,21 +93,6 @@ export const XTerminal: FC<XTerminalProps> = ({
       // WebGL not available, fall back to DOM renderer
     }
 
-    // Wait for fonts, remeasure, fit, then report exact dimensions so the
-    // parent can create the PTY session at the right size.
-    document.fonts.ready.then(() => {
-      if (cancelled) return;
-      const size = terminal.options.fontSize ?? 13;
-      terminal.options.fontSize = size + 0.001;
-      terminal.options.fontSize = size;
-      try {
-        fitAddon.fit();
-      } catch {
-        // ignore fit errors during setup
-      }
-      onMeasuredRef.current?.(terminal.cols, terminal.rows);
-    });
-
     // Forward terminal input to the WebSocket (if connected).
     terminal.onData((data) => {
       const ws = wsRef.current;
@@ -144,7 +118,6 @@ export const XTerminal: FC<XTerminalProps> = ({
     resizeObserver.observe(container);
 
     return () => {
-      cancelled = true;
       resizeObserver.disconnect();
       container.classList.remove("terminal-container--visible");
       terminal.dispose();
@@ -153,94 +126,154 @@ export const XTerminal: FC<XTerminalProps> = ({
     };
   }, []);
 
-  // Phase 2: Connect WebSocket once a sessionId is available.
+  // Phase 2: Ensure tmux session and connect WebSocket with reconnection.
   useEffect(() => {
-    if (!sessionId || !terminalRef.current || !containerRef.current) return;
+    if (!terminalRef.current || !containerRef.current) return;
     const terminal = terminalRef.current;
     const container = containerRef.current;
     let cancelled = false;
+    let reconnectAttempt = 0;
+    let reconnectTimer: ReturnType<typeof setTimeout> | undefined;
+    let isNewSession = false;
 
-    const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-    const wsUrl = `${protocol}//${window.location.host}/api/terminals/${sessionId}/ws`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
+    const connect = async () => {
       if (cancelled) return;
-      // Reveal the terminal now that the connection is established.
-      // Don't wait for first data — initial PTY output may have been
-      // emitted before the onData listener was attached.
-      document.fonts.ready.then(() => {
-        if (cancelled) return;
-        try {
-          fitAddonRef.current?.fit();
-        } catch {
-          // ignore fit errors during setup
-        }
-        container.classList.add("terminal-container--visible");
-      });
-      // Send exact dimensions so the PTY matches the terminal.
-      ws.send(
-        `\x00${JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows })}`,
-      );
-      // Bounce resize after a delay to force tmux to redraw on reconnect.
-      setTimeout(() => {
-        if (cancelled || ws.readyState !== WebSocket.OPEN) return;
-        ws.send(
-          `\x00${JSON.stringify({ type: "resize", cols: Math.max(1, terminal.cols - 1), rows: terminal.rows })}`,
-        );
-        setTimeout(() => {
-          if (cancelled || ws.readyState !== WebSocket.OPEN) return;
-          ws.send(
-            `\x00${JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows })}`,
-          );
-        }, 100);
-      }, 500);
-    };
 
-    let revealScheduled = false;
-    let autoCommandSent = false;
-    ws.onmessage = (event) => {
-      terminal.write(
-        typeof event.data === "string" ? event.data : String(event.data),
-      );
-      // Reveal on first data — terminal is already fitted at exact dimensions.
-      if (!revealScheduled) {
-        revealScheduled = true;
+      // Wait for fonts to be ready and fit before measuring
+      await document.fonts.ready;
+      if (cancelled) return;
+      try {
+        fitAddonRef.current?.fit();
+      } catch {
+        // ignore fit errors
+      }
+
+      // Ensure tmux session exists
+      try {
+        const ensureResponse = await fetch(
+          `/api/tsk/tasks/${taskId}/terminals`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              name: tmuxSessionName,
+              cols: terminal.cols,
+              rows: terminal.rows,
+            }),
+          },
+        );
+        if (ensureResponse.ok) {
+          const data = (await ensureResponse.json()) as { created: boolean };
+          if (reconnectAttempt === 0) {
+            isNewSession = data.created;
+          }
+        } else {
+          if (cancelled) return;
+          scheduleReconnect();
+          return;
+        }
+      } catch {
+        if (cancelled) return;
+        scheduleReconnect();
+        return;
+      }
+
+      // Connect WebSocket
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${protocol}//${window.location.host}/api/tsk/tasks/${taskId}/terminals/${tmuxSessionName}/ws`;
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (cancelled) return;
+        reconnectAttempt = 0;
+
         document.fonts.ready.then(() => {
           if (cancelled) return;
           try {
             fitAddonRef.current?.fit();
           } catch {
-            // ignore fit errors during setup
+            // ignore fit errors
           }
           container.classList.add("terminal-container--visible");
         });
-      }
-      // Send autoCommand once after first data for newly created sessions.
-      if (autoCommand && isNewSessionRef.current && !autoCommandSent) {
-        autoCommandSent = true;
+
+        // Send exact dimensions
+        ws.send(
+          `\x00${JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows })}`,
+        );
+
+        // Bounce resize to force tmux redraw on reconnect
         setTimeout(() => {
-          if (!cancelled && ws.readyState === WebSocket.OPEN) {
-            ws.send(`${autoCommand}\n`);
-          }
-        }, 300);
-      }
+          if (cancelled || ws.readyState !== WebSocket.OPEN) return;
+          ws.send(
+            `\x00${JSON.stringify({ type: "resize", cols: Math.max(1, terminal.cols - 1), rows: terminal.rows })}`,
+          );
+          setTimeout(() => {
+            if (cancelled || ws.readyState !== WebSocket.OPEN) return;
+            ws.send(
+              `\x00${JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows })}`,
+            );
+          }, 100);
+        }, 500);
+      };
+
+      let autoCommandSent = false;
+      ws.onmessage = (event) => {
+        terminal.write(
+          typeof event.data === "string" ? event.data : String(event.data),
+        );
+
+        // Reveal on first data
+        container.classList.add("terminal-container--visible");
+
+        // Send autoCommand only for newly created sessions, not on reconnect
+        if (autoCommand && isNewSession && !autoCommandSent) {
+          autoCommandSent = true;
+          setTimeout(() => {
+            if (!cancelled && ws.readyState === WebSocket.OPEN) {
+              ws.send(`${autoCommand}\n`);
+            }
+          }, 300);
+        }
+      };
+
+      ws.onclose = () => {
+        if (!cancelled) {
+          wsRef.current = null;
+          scheduleReconnect();
+        }
+      };
+
+      ws.onerror = () => {
+        // onclose will fire after onerror
+      };
     };
 
-    ws.onclose = () => {
-      if (!cancelled) {
-        onSessionDeadRef.current?.();
-      }
+    const scheduleReconnect = () => {
+      if (cancelled) return;
+      // Exponential backoff: 1s, 2s, 4s, 8s, 16s, max 30s
+      const delay = Math.min(1000 * 2 ** reconnectAttempt, 30_000);
+      reconnectAttempt++;
+      reconnectTimer = setTimeout(connect, delay);
     };
+
+    connect();
 
     return () => {
       cancelled = true;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
+      const ws = wsRef.current;
       wsRef.current = null;
-      container.classList.remove("terminal-container--visible");
-      ws.close();
+      if (ws) {
+        try {
+          ws.close();
+        } catch {
+          // ignore
+        }
+      }
     };
-  }, [sessionId, autoCommand]);
+  }, [taskId, tmuxSessionName, autoCommand]);
 
   // Re-fit when becoming visible (e.g. switching tabs).
   useEffect(() => {

@@ -1,42 +1,119 @@
 import { Context, Effect, Layer } from "effect";
-import { ulid } from "ulid";
 import type { InferEffect } from "../../../lib/effect/types";
 
-export type TerminalSession = {
-  id: string;
-  taskId: string;
+export type PtyAttachment = {
   containerId: string;
-  label?: string;
-  createdAt: Date;
-  lastActivity: Date;
+  tmuxSessionName: string;
+  taskId: string;
   // biome-ignore lint/suspicious/noExplicitAny: node-pty IPty type is complex native type
   pty: any;
   cleanupTimer?: ReturnType<typeof setTimeout>;
-  // Disposable for the current onData listener (cleaned up on WS reconnect)
   dataListenerDispose?: () => void;
 };
 
-const LayerImpl = Effect.gen(function* () {
-  const sessions = new Map<string, TerminalSession>();
+const ptyAttachmentKey = (containerId: string, tmuxName: string) =>
+  `${containerId}:${tmuxName}`;
 
-  const createSession = (
-    taskId: string,
+const spawnPtyModule = async () => {
+  const { createRequire } = await import("node:module");
+  const ptyRequire = createRequire(import.meta.url);
+  return ptyRequire("node-pty");
+};
+
+const LayerImpl = Effect.gen(function* () {
+  const attachments = new Map<string, PtyAttachment>();
+
+  const listTmuxSessions = (containerId: string) =>
+    Effect.tryPromise({
+      try: async () => {
+        const { execSync } = await import("node:child_process");
+        const output = execSync(
+          `docker exec ${containerId} tmux list-sessions -F "#{session_name}"`,
+          { encoding: "utf-8", timeout: 5000 },
+        ).trim();
+        if (!output) return [];
+        return output.split("\n").filter(Boolean);
+      },
+      catch: () => [] as string[],
+    }).pipe(Effect.catchAll(() => Effect.succeed([] as string[])));
+
+  const ensureTmuxSession = (
     containerId: string,
+    name: string,
     cols?: number,
     rows?: number,
-    label?: string,
   ) =>
     Effect.tryPromise({
       try: async () => {
-        // node-pty is externalized by esbuild (--packages=external)
-        // Use createRequire since the bundle runs as ESM
-        const { createRequire } = await import("node:module");
-        const ptyRequire = createRequire(import.meta.url);
-        const pty = ptyRequire("node-pty");
-        const sessionId = ulid();
-        const now = new Date();
+        const { execSync } = await import("node:child_process");
+        try {
+          execSync(`docker exec ${containerId} tmux has-session -t ${name}`, {
+            timeout: 5000,
+          });
+          return { name, created: false };
+        } catch {
+          // Session doesn't exist, create it
+          const width = cols ?? 80;
+          const height = rows ?? 24;
+          execSync(
+            `docker exec ${containerId} tmux new-session -d -s ${name} -x ${width} -y ${height}`,
+            { timeout: 5000 },
+          );
+          return { name, created: true };
+        }
+      },
+      catch: (error) =>
+        new Error(error instanceof Error ? error.message : String(error)),
+    });
 
-        const tmuxSessionName = `term-${sessionId.slice(0, 8).toLowerCase()}`;
+  const destroyTmuxSession = (containerId: string, name: string) =>
+    Effect.tryPromise({
+      try: async () => {
+        const key = ptyAttachmentKey(containerId, name);
+        const existing = attachments.get(key);
+        if (existing) {
+          if (existing.cleanupTimer) clearTimeout(existing.cleanupTimer);
+          if (existing.dataListenerDispose) existing.dataListenerDispose();
+          try {
+            existing.pty.kill();
+          } catch {
+            // PTY may already be dead
+          }
+          attachments.delete(key);
+        }
+        const { execSync } = await import("node:child_process");
+        execSync(`docker exec ${containerId} tmux kill-session -t ${name}`, {
+          timeout: 5000,
+        });
+      },
+      catch: () => new Error(`Failed to destroy tmux session ${name}`),
+    });
+
+  const attachPty = (
+    containerId: string,
+    taskId: string,
+    name: string,
+    cols?: number,
+    rows?: number,
+  ) =>
+    Effect.tryPromise({
+      try: async () => {
+        const key = ptyAttachmentKey(containerId, name);
+
+        // Kill existing PTY attachment for this session
+        const existing = attachments.get(key);
+        if (existing) {
+          if (existing.cleanupTimer) clearTimeout(existing.cleanupTimer);
+          if (existing.dataListenerDispose) existing.dataListenerDispose();
+          try {
+            existing.pty.kill();
+          } catch {
+            // PTY may already be dead
+          }
+          attachments.delete(key);
+        }
+
+        const pty = await spawnPtyModule();
         const ptyProcess = pty.spawn(
           "docker",
           [
@@ -51,9 +128,10 @@ const LayerImpl = Effect.gen(function* () {
             "-e",
             "TERM_PROGRAM=viewer",
             containerId,
-            "bash",
-            "-c",
-            `tmux -u new-session -A -s ${tmuxSessionName}`,
+            "tmux",
+            "attach",
+            "-t",
+            name,
           ],
           {
             name: "xterm-256color",
@@ -64,118 +142,88 @@ const LayerImpl = Effect.gen(function* () {
           },
         );
 
-        const session: TerminalSession = {
-          id: sessionId,
-          taskId,
+        const attachment: PtyAttachment = {
           containerId,
-          label,
-          createdAt: now,
-          lastActivity: now,
+          tmuxSessionName: name,
+          taskId,
           pty: ptyProcess,
         };
 
-        sessions.set(sessionId, session);
+        attachments.set(key, attachment);
 
-        // Auto-cleanup when PTY exits (e.g. container not ready, docker exec fails)
+        // Auto-cleanup when PTY exits
         ptyProcess.onExit(() => {
-          sessions.delete(sessionId);
+          attachments.delete(key);
         });
 
-        return { sessionId };
+        return attachment;
       },
       catch: (error) =>
         new Error(error instanceof Error ? error.message : String(error)),
     });
 
-  const getSession = (sessionId: string) =>
-    Effect.sync(() => sessions.get(sessionId) ?? null);
+  const getPtyAttachment = (containerId: string, name: string) =>
+    Effect.sync(
+      () => attachments.get(ptyAttachmentKey(containerId, name)) ?? null,
+    );
 
-  const destroySession = (sessionId: string) =>
+  const detachPty = (containerId: string, name: string) =>
     Effect.sync(() => {
-      const session = sessions.get(sessionId);
-      if (session) {
-        if (session.cleanupTimer) {
-          clearTimeout(session.cleanupTimer);
-        }
+      const key = ptyAttachmentKey(containerId, name);
+      const attachment = attachments.get(key);
+      if (attachment) {
+        if (attachment.cleanupTimer) clearTimeout(attachment.cleanupTimer);
+        if (attachment.dataListenerDispose) attachment.dataListenerDispose();
         try {
-          session.pty.kill();
+          attachment.pty.kill();
         } catch {
           // PTY may already be dead
         }
-        sessions.delete(sessionId);
+        attachments.delete(key);
       }
     });
 
-  const listSessions = () =>
-    Effect.sync(() =>
-      [...sessions.values()].map((s) => ({
-        id: s.id,
-        taskId: s.taskId,
-        containerId: s.containerId,
-        label: s.label,
-        createdAt: s.createdAt.toISOString(),
-      })),
-    );
-
-  const markForCleanup = (sessionId: string, delayMs: number) =>
+  const markPtyForCleanup = (
+    containerId: string,
+    name: string,
+    delayMs: number,
+  ) =>
     Effect.sync(() => {
-      const session = sessions.get(sessionId);
-      if (session) {
-        if (session.cleanupTimer) {
-          clearTimeout(session.cleanupTimer);
-        }
-        session.cleanupTimer = setTimeout(() => {
+      const key = ptyAttachmentKey(containerId, name);
+      const attachment = attachments.get(key);
+      if (attachment) {
+        if (attachment.cleanupTimer) clearTimeout(attachment.cleanupTimer);
+        attachment.cleanupTimer = setTimeout(() => {
+          if (attachment.dataListenerDispose) attachment.dataListenerDispose();
           try {
-            session.pty.kill();
+            attachment.pty.kill();
           } catch {
             // PTY may already be dead
           }
-          sessions.delete(sessionId);
+          attachments.delete(key);
         }, delayMs);
       }
     });
 
-  const cancelCleanup = (sessionId: string) =>
+  const cancelPtyCleanup = (containerId: string, name: string) =>
     Effect.sync(() => {
-      const session = sessions.get(sessionId);
-      if (session?.cleanupTimer) {
-        clearTimeout(session.cleanupTimer);
-        session.cleanupTimer = undefined;
-      }
-    });
-
-  const updateActivity = (sessionId: string) =>
-    Effect.sync(() => {
-      const session = sessions.get(sessionId);
-      if (session) {
-        session.lastActivity = new Date();
-      }
-    });
-
-  const cleanupIdleSessions = (maxIdleMs: number) =>
-    Effect.sync(() => {
-      const now = Date.now();
-      for (const [id, session] of sessions) {
-        if (now - session.lastActivity.getTime() > maxIdleMs) {
-          try {
-            session.pty.kill();
-          } catch {
-            // PTY may already be dead
-          }
-          sessions.delete(id);
-        }
+      const key = ptyAttachmentKey(containerId, name);
+      const attachment = attachments.get(key);
+      if (attachment?.cleanupTimer) {
+        clearTimeout(attachment.cleanupTimer);
+        attachment.cleanupTimer = undefined;
       }
     });
 
   return {
-    createSession,
-    getSession,
-    destroySession,
-    listSessions,
-    markForCleanup,
-    cancelCleanup,
-    updateActivity,
-    cleanupIdleSessions,
+    listTmuxSessions,
+    ensureTmuxSession,
+    destroyTmuxSession,
+    attachPty,
+    getPtyAttachment,
+    detachPty,
+    markPtyForCleanup,
+    cancelPtyCleanup,
   };
 });
 

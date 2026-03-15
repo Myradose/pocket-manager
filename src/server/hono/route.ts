@@ -37,11 +37,12 @@ import type { VirtualConversationDatabase } from "../core/session/infrastructure
 import { SessionController } from "../core/session/presentation/SessionController";
 import type { SessionMetaService } from "../core/session/services/SessionMetaService";
 import { TerminalController } from "../core/terminal/presentation/TerminalController";
-import { createTerminalRequestSchema } from "../core/terminal/schema";
+import { ensureTerminalSchema } from "../core/terminal/schema";
 import { TerminalSessionService } from "../core/terminal/services/TerminalSessionService";
 import { handleTerminalWebSocket } from "../core/terminal/ws/TerminalWebSocketHandler";
 import { TskController } from "../core/tsk/presentation/TskController";
 import { createTaskRequestSchema } from "../core/tsk/schema";
+import { TskService } from "../core/tsk/services/TskService";
 import { userConfigSchema } from "../lib/config/config";
 import { effectToResponse } from "../lib/effect/toEffectResponse";
 import { type HonoAppType, upgradeWebSocket } from "./app";
@@ -79,6 +80,7 @@ export const routes = (app: HonoAppType, options: CliOptions) =>
     const tskController = yield* TskController;
     const terminalController = yield* TerminalController;
     const terminalSessionService = yield* TerminalSessionService;
+    const tskService = yield* TskService;
 
     // middleware
     const authMiddlewareService = yield* AuthMiddleware;
@@ -795,38 +797,50 @@ export const routes = (app: HonoAppType, options: CliOptions) =>
          * TerminalController Routes
          */
         .post(
-          "/api/terminals",
-          zValidator("json", createTerminalRequestSchema),
+          "/api/tsk/tasks/:taskId/terminals",
+          zValidator("json", ensureTerminalSchema),
           async (c) => {
+            const { taskId } = c.req.param();
             const response = await effectToResponse(
               c,
-              terminalController.createTerminal(c.req.valid("json")),
+              terminalController.ensureTerminal({
+                taskId,
+                ...c.req.valid("json"),
+              }),
             );
             return response;
           },
         )
 
-        .get("/api/terminals", async (c) => {
+        .get("/api/tsk/tasks/:taskId/terminals", async (c) => {
+          const { taskId } = c.req.param();
           const response = await effectToResponse(
             c,
-            terminalController.listTerminals(),
+            terminalController.listTerminals({ taskId }),
           );
           return response;
         })
 
-        .delete("/api/terminals/:sessionId", async (c) => {
+        .delete("/api/tsk/tasks/:taskId/terminals/:name", async (c) => {
+          const { taskId, name } = c.req.param();
           const response = await effectToResponse(
             c,
-            terminalController.destroyTerminal({ ...c.req.param() }),
+            terminalController.destroyTerminal({ taskId, name }),
           );
           return response;
         })
 
         .get(
-          "/api/terminals/:sessionId/ws",
+          "/api/tsk/tasks/:taskId/terminals/:name/ws",
           upgradeWebSocket((c) => {
-            const sessionId = c.req.param("sessionId") ?? "";
-            return handleTerminalWebSocket(sessionId, terminalSessionService);
+            const taskId = c.req.param("taskId") ?? "";
+            const name = c.req.param("name") ?? "";
+            return handleTerminalWebSocket(
+              taskId,
+              name,
+              terminalSessionService,
+              tskService,
+            );
           }),
         )
     );
