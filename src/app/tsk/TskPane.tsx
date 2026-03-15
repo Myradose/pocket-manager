@@ -152,23 +152,27 @@ export const TskPane: FC<TskPaneProps> = ({
   const [showStopDialog, setShowStopDialog] = useState(false);
 
   const isActiveTask = task.status === "RUNNING" || task.status === "SERVING";
+  const [userInitiatedStop, setUserInitiatedStop] = useState(false);
   const isTransitioning =
-    task.status === "STOPPING" || task.status === "DELETING";
-  const prevStatusRef = useRef(task.status);
+    userInitiatedStop ||
+    task.status === "STOPPING" ||
+    task.status === "DELETING";
 
-  // Navigate away when a user-initiated stop/delete completes
+  // Navigate away when stop completes (task reaches terminal state after user-initiated stop)
   useEffect(() => {
-    const prev = prevStatusRef.current;
-    prevStatusRef.current = task.status;
-
-    if (!isGridView && prev === "STOPPING" && task.status === "STOPPED") {
+    if (
+      userInitiatedStop &&
+      !isGridView &&
+      (task.status === "STOPPED" || task.status === "FAILED")
+    ) {
       navigate({ to: "/tsk", search: {} });
     }
-  }, [task.status, isGridView, navigate]);
+  }, [task.status, userInitiatedStop, isGridView, navigate]);
 
   const handleStopConfirm = useCallback(() => {
     setShowStopDialog(false);
     if (isActiveTask) {
+      setUserInitiatedStop(true);
       stopTask.mutate(task.id);
     } else {
       deleteTask.mutate(task.id);
