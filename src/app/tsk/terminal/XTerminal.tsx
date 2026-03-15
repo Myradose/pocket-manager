@@ -165,6 +165,18 @@ export const XTerminal: FC<XTerminalProps> = ({
 
     ws.onopen = () => {
       if (cancelled) return;
+      // Reveal the terminal now that the connection is established.
+      // Don't wait for first data — initial PTY output may have been
+      // emitted before the onData listener was attached.
+      document.fonts.ready.then(() => {
+        if (cancelled) return;
+        try {
+          fitAddonRef.current?.fit();
+        } catch {
+          // ignore fit errors during setup
+        }
+        container.classList.add("terminal-container--visible");
+      });
       // Send exact dimensions so the PTY matches the terminal.
       ws.send(
         `\x00${JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows })}`,
