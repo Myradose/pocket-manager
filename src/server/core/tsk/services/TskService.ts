@@ -1,4 +1,3 @@
-import { FileSystem, Path } from "@effect/platform";
 import { Context, Data, Effect, Layer } from "effect";
 import type { InferEffect } from "../../../lib/effect/types";
 import type { CreateTaskRequest, TskTaskResponse } from "../schema";
@@ -18,13 +17,14 @@ type RawTask = {
   started_at: string | null;
   container_id?: string;
   copied_repo_path?: string;
+  task_dir?: string;
+  serve_hostname?: string;
 };
 
-const getHomeDir = () =>
-  Effect.sync(() => {
-    // biome-ignore lint/style/noProcessEnv: HOME is not in EnvSchema
-    return process.env.HOME ?? process.env.USERPROFILE ?? "";
-  });
+type RepoInfoResponse = {
+  services: Record<string, { port: number; path: string; url?: string }>;
+  submodules: string[];
+};
 
 const getTskApiPort = () =>
   Effect.sync(() => {
@@ -38,248 +38,91 @@ const getTskApiPort = () =>
   });
 
 const LayerImpl = Effect.gen(function* () {
-  const fs = yield* FileSystem.FileSystem;
-  const pathService = yield* Path.Path;
-
-  const generateServeHostname = (taskName: string, _taskId: string): string => {
-    return taskName
-      .split("")
-      .map((c) => (/[a-zA-Z0-9]/.test(c) ? c.toLowerCase() : "-"))
-      .join("")
-      .replace(/^-+|-+$/g, "")
-      .replace(/-{2,}/g, "-");
-  };
-
-  const parseToml = (content: string) =>
+  const listTasks = () =>
     Effect.tryPromise({
       try: async () => {
-        const toml = await import("toml");
-        return toml.parse(content) as {
-          services?: Record<
-            string,
-            { port: number; path: string; url?: string }
-          >;
-        };
-      },
-      catch: () => new TskApiError({ message: "Failed to parse TOML" }),
-    });
+        const port = await Effect.runPromise(getTskApiPort());
+        const resp = await fetch(`http://localhost:${port}/tasks?limit=1000`);
+        if (!resp.ok) return [] satisfies TskTaskResponse[];
 
-  const loadProjectConfig = (repoRoot: string) =>
-    Effect.gen(function* () {
-      const configPath = pathService.join(repoRoot, ".tsk", "project.toml");
-      const exists = yield* fs.exists(configPath);
-      if (!exists) return {};
+        const data = (await resp.json()) as { tasks: RawTask[] };
+        const tasks = data.tasks;
 
-      const content = yield* fs.readFileString(configPath);
-      const parsed = yield* parseToml(content);
-      return parsed.services ?? {};
-    }).pipe(
-      Effect.catchAll(() =>
-        Effect.succeed(
-          {} as Record<string, { port: number; path: string; url?: string }>,
-        ),
-      ),
-    );
+        // Fetch repo-info per unique repo_root
+        const repoInfoCache = new Map<string, RepoInfoResponse>();
+        const uniqueRoots = [...new Set(tasks.map((t) => t.repo_root))];
+        await Promise.all(
+          uniqueRoots.map(async (repoRoot) => {
+            try {
+              const infoResp = await fetch(
+                `http://localhost:${port}/repo-info?path=${encodeURIComponent(repoRoot)}`,
+              );
+              if (infoResp.ok) {
+                const info = (await infoResp.json()) as RepoInfoResponse;
+                repoInfoCache.set(repoRoot, info);
+              }
+            } catch {
+              // ignore — will use empty defaults
+            }
+          }),
+        );
 
-  const parseGitmodules = (repoRoot: string) =>
-    Effect.gen(function* () {
-      const gitmodulesPath = pathService.join(repoRoot, ".gitmodules");
-      const exists = yield* fs.exists(gitmodulesPath);
-      if (!exists) return [];
+        const traefikPort = 8080;
 
-      const content = yield* fs.readFileString(gitmodulesPath);
-      const paths: string[] = [];
-      for (const line of content.split("\n")) {
-        const trimmed = line.trim();
-        if (trimmed.startsWith("path = ")) {
-          paths.push(trimmed.slice(7));
-        }
-      }
-      return paths;
-    }).pipe(Effect.catchAll(() => Effect.succeed([] as string[])));
+        return tasks.map((task): TskTaskResponse => {
+          const repoInfo = repoInfoCache.get(task.repo_root);
+          const services = repoInfo?.services ?? {};
+          const submodules = repoInfo?.submodules ?? [];
 
-  const enrichTask = (
-    task: RawTask,
-    taskDir: string,
-    services: Record<string, { port: number; path: string; url?: string }>,
-    submodules: string[],
-  ): TskTaskResponse => {
-    const hostname = generateServeHostname(task.name, task.id);
-    const traefikPort = 8080;
+          const hostname = task.serve_hostname;
+          let frontendUrl: string | undefined;
+          let vncUrl: string | undefined;
 
-    let frontendUrl: string | undefined;
-    let vncUrl: string | undefined;
+          if (hostname) {
+            const frontendService = services.frontend ?? services.web;
+            if (frontendService) {
+              const displayPath =
+                frontendService.url ?? frontendService.path ?? "/";
+              frontendUrl = `http://${hostname}.localhost:${traefikPort}${displayPath}`;
+            }
 
-    const frontendService = services.frontend ?? services.web;
-    if (frontendService) {
-      const displayPath = frontendService.url ?? frontendService.path ?? "/";
-      frontendUrl = `http://${hostname}.localhost:${traefikPort}${displayPath}`;
-    }
-
-    const vncService = services.vnc;
-    if (vncService) {
-      const displayPath = vncService.url ?? vncService.path ?? "/vnc";
-      vncUrl = `http://${hostname}.localhost:${traefikPort}${displayPath}`;
-    }
-
-    return {
-      ...task,
-      transcripts_dir: taskDir ? `${taskDir}/transcripts` : "",
-      frontend_url: frontendUrl,
-      vnc_url: vncUrl,
-      submodules: submodules.length > 0 ? submodules : undefined,
-    };
-  };
-
-  const listTasks = () =>
-    Effect.gen(function* () {
-      const homeDir = yield* getHomeDir();
-      const tasksFile = pathService.join(
-        homeDir,
-        ".local",
-        "share",
-        "tsk",
-        "tasks.json",
-      );
-      const tasksBaseDir = pathService.join(
-        homeDir,
-        ".local",
-        "share",
-        "tsk",
-        "tasks",
-      );
-
-      const tasksFileExists = yield* fs.exists(tasksFile);
-      if (!tasksFileExists) return [] as TskTaskResponse[];
-
-      const content = yield* fs.readFileString(tasksFile);
-      const tasks = JSON.parse(content) as RawTask[];
-
-      const tasksDirExists = yield* fs.exists(tasksBaseDir);
-      const taskDirMap = new Map<string, string>();
-
-      if (tasksDirExists) {
-        const taskDirs = yield* fs.readDirectory(tasksBaseDir);
-        for (const dir of taskDirs) {
-          const match = dir.match(/^[a-f0-9]+-(.+)$/);
-          if (match?.[1]) {
-            taskDirMap.set(match[1], pathService.join(tasksBaseDir, dir));
+            const vncService = services.vnc;
+            if (vncService) {
+              const displayPath = vncService.url ?? vncService.path ?? "/vnc";
+              vncUrl = `http://${hostname}.localhost:${traefikPort}${displayPath}`;
+            }
           }
-        }
-      }
 
-      const projectConfigCache = new Map<
-        string,
-        Record<string, { port: number; path: string; url?: string }>
-      >();
-      const submoduleCache = new Map<string, string[]>();
-
-      const enrichedTasks: TskTaskResponse[] = [];
-      for (const task of tasks) {
-        let services = projectConfigCache.get(task.repo_root);
-        if (services === undefined) {
-          services = yield* loadProjectConfig(task.repo_root);
-          projectConfigCache.set(task.repo_root, services);
-        }
-        let submodules = submoduleCache.get(task.repo_root);
-        if (submodules === undefined) {
-          submodules = yield* parseGitmodules(task.repo_root);
-          submoduleCache.set(task.repo_root, submodules);
-        }
-        const taskDir = taskDirMap.get(task.id) ?? "";
-        enrichedTasks.push(enrichTask(task, taskDir, services, submodules));
-      }
-
-      return enrichedTasks;
+          return {
+            ...task,
+            transcripts_dir: task.task_dir
+              ? `${task.task_dir}/transcripts`
+              : "",
+            frontend_url: frontendUrl,
+            vnc_url: vncUrl,
+            submodules: submodules.length > 0 ? submodules : undefined,
+          };
+        });
+      },
+      catch: () => new TskApiError({ message: "Failed to list tasks" }),
     }).pipe(Effect.catchAll(() => Effect.succeed([] as TskTaskResponse[])));
 
   const getTaskTranscript = (taskId: string) =>
     Effect.gen(function* () {
-      const homeDir = yield* getHomeDir();
-      const tasksBaseDir = pathService.join(
-        homeDir,
-        ".local",
-        "share",
-        "tsk",
-        "tasks",
-      );
-
-      const tasksDirExists = yield* fs.exists(tasksBaseDir);
-      if (!tasksDirExists) return { conversations: [] as unknown[] };
-
-      const taskDirs = yield* fs.readDirectory(tasksBaseDir);
-      let transcriptsDir = "";
-      for (const dir of taskDirs) {
-        if (dir.endsWith(`-${taskId}`)) {
-          transcriptsDir = pathService.join(tasksBaseDir, dir, "transcripts");
-          break;
-        }
-      }
-
-      if (!transcriptsDir) {
-        return { conversations: [] as unknown[], error: "Task not found" };
-      }
-
-      const findJsonl = (
-        dir: string,
-      ): Effect.Effect<string | null, never, never> =>
-        Effect.gen(function* () {
-          const dirExists = yield* fs.exists(dir);
-          if (!dirExists) return null;
-
-          const entries = yield* fs.readDirectory(dir);
-
-          // First pass: look for .jsonl files at this level
-          for (const entry of entries) {
-            if (entry.endsWith(".jsonl")) {
-              const fullPath = pathService.join(dir, entry);
-              const stat = yield* fs.stat(fullPath);
-              if (stat.type === "File") {
-                return fullPath;
-              }
-            }
-          }
-
-          // Second pass: recurse into subdirectories (skip 'subagents')
-          for (const entry of entries) {
-            if (entry === "subagents") continue;
-            const fullPath = pathService.join(dir, entry);
-            const stat = yield* fs.stat(fullPath);
-            if (stat.type === "Directory") {
-              const found = yield* findJsonl(fullPath);
-              if (found) return found;
-            }
-          }
-
-          return null;
-        }).pipe(Effect.catchAll(() => Effect.succeed(null)));
-
-      const jsonlFile = yield* findJsonl(transcriptsDir);
-      if (!jsonlFile) {
-        return { conversations: [] as unknown[] };
-      }
-
-      const content = yield* fs.readFileString(jsonlFile);
-      const lines = content.trim().split("\n").filter(Boolean);
-      const conversations = lines
-        .map((line) => {
-          try {
-            return JSON.parse(line);
-          } catch {
-            return { type: "x-error", line };
-          }
-        })
-        .filter(
-          (conv: { type: string }) =>
-            conv.type === "user" ||
-            conv.type === "assistant" ||
-            conv.type === "system",
-        );
-
-      return { conversations };
-    }).pipe(
-      Effect.catchAll(() => Effect.succeed({ conversations: [] as unknown[] })),
-    );
+      const port = yield* getTskApiPort();
+      const result = yield* Effect.tryPromise({
+        try: async () => {
+          const resp = await fetch(
+            `http://localhost:${port}/tasks/${taskId}/transcript`,
+          );
+          if (!resp.ok) return { conversations: [] };
+          const data = await resp.json();
+          return { conversations: data.conversations ?? [] };
+        },
+        catch: () => new TskApiError({ message: "Failed to fetch transcript" }),
+      });
+      return result;
+    }).pipe(Effect.catchAll(() => Effect.succeed({ conversations: [] })));
 
   const createTask = (request: CreateTaskRequest) =>
     Effect.tryPromise({
@@ -391,8 +234,6 @@ const LayerImpl = Effect.gen(function* () {
     deleteTask,
     stopTask,
     openPath,
-    generateServeHostname,
-    enrichTask,
   };
 });
 

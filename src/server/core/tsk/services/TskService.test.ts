@@ -1,150 +1,172 @@
-import { FileSystem } from "@effect/platform";
-import { NodeContext } from "@effect/platform-node";
-import { Effect, Layer } from "effect";
-import { describe, expect, test } from "vitest";
-import { testPlatformLayer } from "../../../../testing/layers/testPlatformLayer";
+import { Effect } from "effect";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { TskService } from "./TskService";
 
 describe("TskService", () => {
-  describe("generateServeHostname", () => {
-    const testLayer = TskService.Live.pipe(
-      Layer.provide(NodeContext.layer),
-      Layer.provide(testPlatformLayer()),
-    );
+  const originalFetch = globalThis.fetch;
 
-    test("uses task name as hostname (matching tsk Traefik routing)", async () => {
-      const service = await Effect.runPromise(
-        TskService.pipe(Effect.provide(testLayer)),
-      );
-
-      const result = service.generateServeHostname(
-        "better-puffin",
-        "better-puffin",
-      );
-      expect(result).toBe("better-puffin");
-    });
-
-    test("sanitizes special characters to dashes", async () => {
-      const service = await Effect.runPromise(
-        TskService.pipe(Effect.provide(testLayer)),
-      );
-
-      const result = service.generateServeHostname("My Task", "abcdef1234");
-      expect(result).toBe("my-task");
-    });
-
-    test("collapses consecutive dashes", async () => {
-      const service = await Effect.runPromise(
-        TskService.pipe(Effect.provide(testLayer)),
-      );
-
-      const result = service.generateServeHostname(
-        "Hello World! @#$",
-        "12345678",
-      );
-      expect(result).toBe("hello-world");
-    });
+  beforeEach(() => {
+    vi.stubGlobal("fetch", vi.fn());
   });
 
-  describe("enrichTask", () => {
-    const testLayer = TskService.Live.pipe(
-      Layer.provide(NodeContext.layer),
-      Layer.provide(testPlatformLayer()),
-    );
-
-    test("enriches task with transcript dir and URLs", async () => {
-      const service = await Effect.runPromise(
-        TskService.pipe(Effect.provide(testLayer)),
-      );
-
-      const task = {
-        id: "abc12345",
-        name: "test-task",
-        status: "SERVING",
-        repo_root: "/tmp/repo",
-        project: "test",
-        branch_name: "tsk/abc12345",
-        created_at: "2026-01-01T00:00:00Z",
-        started_at: "2026-01-01T00:00:01Z",
-      };
-
-      const services = {
-        frontend: { port: 4200, path: "/" },
-        vnc: { port: 6080, path: "/vnc" },
-      };
-
-      const result = service.enrichTask(
-        task,
-        "/tmp/tasks/hash-abc12345",
-        services,
-        [],
-      );
-
-      expect(result.transcripts_dir).toBe(
-        "/tmp/tasks/hash-abc12345/transcripts",
-      );
-      expect(result.frontend_url).toBe("http://test-task.localhost:8080/");
-      expect(result.vnc_url).toBe("http://test-task.localhost:8080/vnc");
-    });
-
-    test("handles missing services", async () => {
-      const service = await Effect.runPromise(
-        TskService.pipe(Effect.provide(testLayer)),
-      );
-
-      const task = {
-        id: "abc12345",
-        name: "test-task",
-        status: "RUNNING",
-        repo_root: "/tmp/repo",
-        project: "test",
-        branch_name: "tsk/abc12345",
-        created_at: "2026-01-01T00:00:00Z",
-        started_at: null,
-      };
-
-      const result = service.enrichTask(task, "", {}, []);
-
-      expect(result.transcripts_dir).toBe("");
-      expect(result.frontend_url).toBeUndefined();
-      expect(result.vnc_url).toBeUndefined();
-    });
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
   });
 
   describe("listTasks", () => {
-    test("returns empty array when tasks file does not exist", async () => {
-      const mockFs = FileSystem.layerNoop({
-        exists: () => Effect.succeed(false),
+    test("returns enriched tasks from tsk API", async () => {
+      const mockFetch = vi.fn();
+
+      // First call: GET /tasks
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          tasks: [
+            {
+              id: "pliable-klipspringer",
+              name: "test-task",
+              status: "SERVING",
+              repo_root: "/tmp/repo",
+              project: "test",
+              branch_name: "tsk/pliable-klipspringer",
+              created_at: "2026-01-01T00:00:00Z",
+              started_at: "2026-01-01T00:00:01Z",
+              task_dir: "/tmp/tasks/hash-pliable-klipspringer",
+              serve_hostname: "pliable-klipspringer",
+            },
+          ],
+        }),
       });
 
-      const testLayer = TskService.Live.pipe(
-        Layer.provide(mockFs),
-        Layer.provide(testPlatformLayer()),
-      );
+      // Second call: GET /repo-info
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          services: {
+            frontend: { port: 4200, path: "/" },
+            vnc: { port: 6080, path: "/vnc" },
+          },
+          submodules: ["libs/core"],
+        }),
+      });
+
+      vi.stubGlobal("fetch", mockFetch);
 
       const service = await Effect.runPromise(
-        TskService.pipe(Effect.provide(testLayer)),
+        TskService.pipe(Effect.provide(TskService.Live)),
+      );
+
+      const result = await Effect.runPromise(service.listTasks());
+
+      expect(result).toHaveLength(1);
+      const task = result[0];
+      expect(task).toBeDefined();
+      if (!task) return;
+      expect(task.id).toBe("pliable-klipspringer");
+      expect(task.transcripts_dir).toBe(
+        "/tmp/tasks/hash-pliable-klipspringer/transcripts",
+      );
+      expect(task.frontend_url).toBe(
+        "http://pliable-klipspringer.localhost:8080/",
+      );
+      expect(task.vnc_url).toBe(
+        "http://pliable-klipspringer.localhost:8080/vnc",
+      );
+      expect(task.submodules).toEqual(["libs/core"]);
+    });
+
+    test("returns empty array when API is unreachable", async () => {
+      const mockFetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+      vi.stubGlobal("fetch", mockFetch);
+
+      const service = await Effect.runPromise(
+        TskService.pipe(Effect.provide(TskService.Live)),
       );
 
       const result = await Effect.runPromise(service.listTasks());
 
       expect(result).toEqual([]);
     });
+
+    test("non-serve tasks have no frontend/vnc URLs", async () => {
+      const mockFetch = vi.fn();
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          tasks: [
+            {
+              id: "calm-badger",
+              name: "test-task",
+              status: "RUNNING",
+              repo_root: "/tmp/repo",
+              project: "test",
+              branch_name: "tsk/calm-badger",
+              created_at: "2026-01-01T00:00:00Z",
+              started_at: null,
+              // no serve_hostname, no task_dir
+            },
+          ],
+        }),
+      });
+
+      mockFetch.mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          services: { frontend: { port: 4200, path: "/" } },
+          submodules: [],
+        }),
+      });
+
+      vi.stubGlobal("fetch", mockFetch);
+
+      const service = await Effect.runPromise(
+        TskService.pipe(Effect.provide(TskService.Live)),
+      );
+
+      const result = await Effect.runPromise(service.listTasks());
+
+      expect(result).toHaveLength(1);
+      const task = result[0];
+      expect(task).toBeDefined();
+      if (!task) return;
+      expect(task.frontend_url).toBeUndefined();
+      expect(task.vnc_url).toBeUndefined();
+      expect(task.transcripts_dir).toBe("");
+    });
   });
 
   describe("getTaskTranscript", () => {
-    test("returns empty conversations when task dir does not exist", async () => {
-      const mockFs = FileSystem.layerNoop({
-        exists: () => Effect.succeed(false),
+    test("returns conversations from tsk API", async () => {
+      const mockFetch = vi.fn().mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          conversations: [
+            { type: "user", message: { content: "hello" } },
+            { type: "assistant", message: { content: "hi" } },
+          ],
+        }),
       });
-
-      const testLayer = TskService.Live.pipe(
-        Layer.provide(mockFs),
-        Layer.provide(testPlatformLayer()),
-      );
+      vi.stubGlobal("fetch", mockFetch);
 
       const service = await Effect.runPromise(
-        TskService.pipe(Effect.provide(testLayer)),
+        TskService.pipe(Effect.provide(TskService.Live)),
+      );
+
+      const result = await Effect.runPromise(
+        service.getTaskTranscript("task1"),
+      );
+
+      expect(result.conversations).toHaveLength(2);
+    });
+
+    test("returns empty conversations when API fails", async () => {
+      const mockFetch = vi.fn().mockRejectedValue(new Error("ECONNREFUSED"));
+      vi.stubGlobal("fetch", mockFetch);
+
+      const service = await Effect.runPromise(
+        TskService.pipe(Effect.provide(TskService.Live)),
       );
 
       const result = await Effect.runPromise(

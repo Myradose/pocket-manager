@@ -26,18 +26,6 @@ const mockTskServiceLayer = Layer.mock(TskService, {
     }),
   createTask: () => Effect.succeed({ id: "new-task", status: "QUEUED" }),
   deleteTask: () => Effect.succeed({ success: true }),
-  generateServeHostname: () => "test",
-  enrichTask: () => ({
-    id: "task1",
-    name: "Test Task",
-    status: "SERVING",
-    repo_root: "/tmp/repo",
-    project: "test",
-    branch_name: "tsk/task1",
-    created_at: "2026-01-01T00:00:00Z",
-    started_at: null,
-    transcripts_dir: "",
-  }),
 });
 
 const testLayer = TskController.Live.pipe(Layer.provide(mockTskServiceLayer));

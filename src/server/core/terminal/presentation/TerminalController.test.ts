@@ -25,18 +25,6 @@ const mockTskServiceLayer = Layer.mock(TskService, {
   getTaskTranscript: () => Effect.succeed({ conversations: [] }),
   createTask: () => Effect.succeed({ id: "new-task", status: "QUEUED" }),
   deleteTask: () => Effect.succeed({ success: true }),
-  generateServeHostname: () => "test",
-  enrichTask: () => ({
-    id: "task1",
-    name: "Test",
-    status: "SERVING",
-    repo_root: "/tmp",
-    project: "test",
-    branch_name: "tsk/task1",
-    created_at: "",
-    started_at: null,
-    transcripts_dir: "",
-  }),
 });
 
 const mockTerminalSessionServiceLayer = Layer.mock(TerminalSessionService, {
