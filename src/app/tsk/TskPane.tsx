@@ -1,30 +1,41 @@
 import { useQuery } from "@tanstack/react-query";
+import { Link, useNavigate } from "@tanstack/react-router";
 import {
-  Columns2,
-  ExternalLink,
-  Monitor,
-  Terminal,
-  Check,
-  Info,
-  Copy,
-  CheckCheck,
   ArrowDown,
+  Check,
+  CheckCheck,
+  Columns2,
+  Copy,
+  ExternalLink,
+  Info,
+  Monitor,
+  SquareTerminal,
+  Terminal,
+  Trash2,
 } from "lucide-react";
 import {
   type FC,
-  useState,
+  useCallback,
+  useEffect,
   useMemo,
   useRef,
-  useEffect,
-  useCallback,
+  useState,
 } from "react";
-import { Link } from "@tanstack/react-router";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ConversationList } from "../projects/[projectId]/sessions/[sessionId]/components/conversationList/ConversationList";
 import type { TskTask } from "./queries";
-import { tskTranscriptQuery } from "./queries";
+import { tskTranscriptQuery, useDeleteTskTask } from "./queries";
+import { TerminalPanel } from "./terminal/TerminalPanel";
 
-type GridViewMode = "logs" | "frontend" | "vnc";
-type DetailViewMode = "logs" | "frontend" | "vnc" | "split";
+type GridViewMode = "logs" | "frontend" | "vnc" | "terminal";
+type DetailViewMode = "logs" | "frontend" | "vnc" | "split" | "terminal";
 
 type TskPaneProps = {
   task: TskTask;
@@ -58,6 +69,7 @@ const getRecentToolCalls = (
     i--
   ) {
     const conv = conversations[i];
+    if (!conv) continue;
     if (conv.type === "assistant" && conv.message?.content) {
       const content = conv.message.content;
       if (Array.isArray(content)) {
@@ -77,8 +89,8 @@ const getRecentToolCalls = (
               else {
                 // For other tools, show first key=value pair
                 const keys = Object.keys(input);
-                if (keys.length > 0) {
-                  const key = keys[0];
+                const key = keys[0];
+                if (key !== undefined) {
                   const rawVal = input[key];
                   const val =
                     typeof rawVal === "string"
@@ -128,6 +140,19 @@ export const TskPane: FC<TskPaneProps> = ({
   initialAutoScroll,
   onAutoScrollChange,
 }) => {
+  const deleteTask = useDeleteTskTask();
+  const navigate = useNavigate();
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+
+  const handleDeleteConfirm = useCallback(() => {
+    setShowDeleteDialog(false);
+    // Navigate back immediately so the user doesn't wait for the API
+    if (!isGridView) {
+      navigate({ to: "/tsk", search: {} });
+    }
+    deleteTask.mutate(task.id);
+  }, [task.id, isGridView, deleteTask, navigate]);
+
   // Track if split mode is active (detail view only feature)
   const [isSplitMode, setIsSplitMode] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
@@ -139,10 +164,13 @@ export const TskPane: FC<TskPaneProps> = ({
   const prevViewMode = useRef<string | null>(null);
 
   // Sync autoScroll changes to parent
-  const setAutoScroll = (value: boolean) => {
-    setAutoScrollLocal(value);
-    onAutoScrollChange?.(value);
-  };
+  const setAutoScroll = useCallback(
+    (value: boolean) => {
+      setAutoScrollLocal(value);
+      onAutoScrollChange?.(value);
+    },
+    [onAutoScrollChange],
+  );
 
   // Reset split mode when switching to grid view
   useEffect(() => {
@@ -267,9 +295,9 @@ export const TskPane: FC<TskPaneProps> = ({
     if (!shouldShowOverlay || recentToolCalls.length === 0) return null;
     return (
       <div className="absolute bottom-0 left-0 right-0 bg-black/80 text-white text-xs p-2 font-mono overflow-hidden">
-        {recentToolCalls.map((tc, i) => (
+        {recentToolCalls.map((tc) => (
           <div
-            key={i}
+            key={`${tc.name}-${tc.args}`}
             className="overflow-hidden text-ellipsis whitespace-nowrap"
           >
             <span className="text-blue-400">{tc.name}</span>
@@ -319,6 +347,19 @@ export const TskPane: FC<TskPaneProps> = ({
           <span className="text-xs text-muted-foreground">({task.id})</span>
         </div>
         <div className="flex items-center gap-1">
+          {(task.status === "QUEUED" ||
+            task.status === "RUNNING" ||
+            task.status === "SERVING") && (
+            <button
+              type="button"
+              onClick={() => setShowDeleteDialog(true)}
+              disabled={deleteTask.isPending}
+              className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"
+              title="Cancel/delete task"
+            >
+              <Trash2 className="w-4 h-4" />
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setShowInfo((prev) => !prev)}
@@ -359,6 +400,17 @@ export const TskPane: FC<TskPaneProps> = ({
                   <Monitor className="w-4 h-4" />
                 </button>
               )}
+              {(task.status === "SERVING" || task.status === "RUNNING") &&
+                task.container_id && (
+                  <button
+                    type="button"
+                    onClick={() => handleViewModeChange("terminal")}
+                    className={`p-1.5 rounded hover:bg-muted ${viewMode === "terminal" ? "bg-muted" : ""}`}
+                    title="Open terminal"
+                  >
+                    <SquareTerminal className="w-4 h-4" />
+                  </button>
+                )}
             </>
           ) : (
             /* Detail view: all options including split */
@@ -391,6 +443,17 @@ export const TskPane: FC<TskPaneProps> = ({
                   <Monitor className="w-4 h-4" />
                 </button>
               )}
+              {(task.status === "SERVING" || task.status === "RUNNING") &&
+                task.container_id && (
+                  <button
+                    type="button"
+                    onClick={() => handleViewModeChange("terminal")}
+                    className={`p-1.5 rounded hover:bg-muted ${viewMode === "terminal" ? "bg-muted" : ""}`}
+                    title="Open terminal"
+                  >
+                    <SquareTerminal className="w-4 h-4" />
+                  </button>
+                )}
               {task.frontend_url && task.vnc_url && (
                 <button
                   type="button"
@@ -488,7 +551,14 @@ export const TskPane: FC<TskPaneProps> = ({
       )}
 
       {/* Content */}
-      <div className="flex-1 overflow-hidden">
+      <div
+        className="flex-1 overflow-hidden"
+        style={
+          viewMode === "terminal"
+            ? { background: "#0f1119", borderRadius: "0 0 8px 8px" }
+            : undefined
+        }
+      >
         {viewMode === "logs" && (
           <div className="relative h-full">
             <div
@@ -570,7 +640,40 @@ export const TskPane: FC<TskPaneProps> = ({
             )}
           </div>
         )}
+
+        {viewMode === "terminal" && task.container_id && (
+          <TerminalPanel taskId={task.id} visible />
+        )}
       </div>
+
+      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Delete Task</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete{" "}
+              <span className="font-medium text-foreground">{task.name}</span>?
+              This will stop the container and remove the task.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button
+              type="button"
+              onClick={() => setShowDeleteDialog(false)}
+              className="px-4 py-2 rounded text-sm hover:bg-muted"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleDeleteConfirm}
+              className="px-4 py-2 rounded text-sm bg-red-600 text-white hover:bg-red-700"
+            >
+              Delete
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

@@ -1,0 +1,142 @@
+@import "@xterm/xterm/css/xterm.css";
+
+.terminal-container {
+  --terminal-bg: #0f1119;
+
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--terminal-bg);
+}
+
+.terminal-container .xterm {
+  height: 100%;
+  padding: 8px 4px 4px 8px;
+}
+
+/* xterm.css hardcodes background-color: #000 on .xterm-viewport (line 105)
+   and xterm.js applies the theme color as an inline style after mount. But
+   the scrollable-element wrapper can still flash #000 during rendering.
+   Scope the override to .terminal-container so it doesn't leak. */
+.terminal-container .xterm,
+.terminal-container .xterm-viewport,
+.terminal-container .xterm-screen {
+  background-color: var(--terminal-bg) !important;
+}
+
+.terminal-container .xterm-viewport {
+  overflow-y: auto;
+}
+
+.terminal-container .xterm-screen {
+  height: 100%;
+}
+
+/* Custom scrollbar — thin, subtle, blends with terminal */
+.terminal-container .xterm-viewport::-webkit-scrollbar {
+  width: 6px;
+}
+
+.terminal-container .xterm-viewport::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.terminal-container .xterm-viewport::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.terminal-container .xterm-viewport::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+/* Firefox */
+.terminal-container .xterm-viewport {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
+}
+
+/* Tab bar styles */
+.terminal-tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  padding: 0 4px;
+  min-height: 34px;
+  background: #16171e;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  user-select: none;
+}
+
+.terminal-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  font-size: 12px;
+  line-height: 1;
+  color: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  border-radius: 5px 5px 0 0;
+  position: relative;
+  transition: color 0.15s, background 0.15s;
+}
+
+.terminal-tab:hover {
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.terminal-tab--active {
+  color: rgba(255, 255, 255, 0.9);
+  background: var(--terminal-bg, #0f1119);
+}
+
+.terminal-tab--active::after {
+  content: "";
+  position: absolute;
+  bottom: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: var(--terminal-bg, #0f1119);
+}
+
+.terminal-tab__close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  color: inherit;
+  opacity: 0;
+  transition: opacity 0.15s, background 0.1s;
+}
+
+.terminal-tab:hover .terminal-tab__close,
+.terminal-tab--active .terminal-tab__close {
+  opacity: 0.6;
+}
+
+.terminal-tab__close:hover {
+  opacity: 1 !important;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.terminal-tab-new {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  margin-left: 2px;
+  border-radius: 5px;
+  color: rgba(255, 255, 255, 0.35);
+  transition: color 0.15s, background 0.15s;
+}
+
+.terminal-tab-new:hover {
+  color: rgba(255, 255, 255, 0.7);
+  background: rgba(255, 255, 255, 0.06);
+}

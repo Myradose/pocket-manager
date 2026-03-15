@@ -1,4 +1,4 @@
-import { type CommandExecutor, FileSystem, Path } from "@effect/platform";
+import type { CommandExecutor, FileSystem, Path } from "@effect/platform";
 import { zValidator } from "@hono/zod-validator";
 import { Effect, Runtime } from "effect";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
@@ -36,9 +36,15 @@ import { SearchController } from "../core/search/presentation/SearchController";
 import type { VirtualConversationDatabase } from "../core/session/infrastructure/VirtualConversationDatabase";
 import { SessionController } from "../core/session/presentation/SessionController";
 import type { SessionMetaService } from "../core/session/services/SessionMetaService";
+import { TerminalController } from "../core/terminal/presentation/TerminalController";
+import { createTerminalRequestSchema } from "../core/terminal/schema";
+import { TerminalSessionService } from "../core/terminal/services/TerminalSessionService";
+import { handleTerminalWebSocket } from "../core/terminal/ws/TerminalWebSocketHandler";
+import { TskController } from "../core/tsk/presentation/TskController";
+import { createTaskRequestSchema } from "../core/tsk/schema";
 import { userConfigSchema } from "../lib/config/config";
 import { effectToResponse } from "../lib/effect/toEffectResponse";
-import type { HonoAppType } from "./app";
+import { type HonoAppType, upgradeWebSocket } from "./app";
 import { InitializeService } from "./initialize";
 import { AuthMiddleware } from "./middleware/auth.middleware";
 import { configMiddleware } from "./middleware/config.middleware";
@@ -70,6 +76,9 @@ export const routes = (app: HonoAppType, options: CliOptions) =>
     const schedulerController = yield* SchedulerController;
     const featureFlagController = yield* FeatureFlagController;
     const searchController = yield* SearchController;
+    const tskController = yield* TskController;
+    const terminalController = yield* TerminalController;
+    const terminalSessionService = yield* TerminalSessionService;
 
     // middleware
     const authMiddlewareService = yield* AuthMiddleware;
@@ -686,205 +695,79 @@ export const routes = (app: HonoAppType, options: CliOptions) =>
         })
 
         /**
-         * TSK Routes
+         * TskController Routes
          */
         .get("/api/tsk/tasks", async (c) => {
-          const homeDir =
-            process.env["HOME"] ?? process.env["USERPROFILE"] ?? "";
-          const tasksFile = `${homeDir}/.local/share/tsk/tasks.json`;
-          const tasksBaseDir = `${homeDir}/.local/share/tsk/tasks`;
-
-          try {
-            const fs = await import("node:fs/promises");
-            const toml = await import("toml");
-            const content = await fs.readFile(tasksFile, "utf-8");
-            const tasks = JSON.parse(content) as Array<{
-              id: string;
-              name: string;
-              status: string;
-              repo_root: string;
-              project: string;
-              branch_name: string;
-              created_at: string;
-              started_at: string | null;
-            }>;
-
-            // Scan task directories to find the ones matching task IDs
-            const taskDirs = await fs.readdir(tasksBaseDir);
-            const taskDirMap = new Map<string, string>();
-            for (const dir of taskDirs) {
-              // Task directories are named {hash}-{taskId}
-              const match = dir.match(/^[a-f0-9]+-(.+)$/);
-              if (match?.[1]) {
-                taskDirMap.set(match[1], `${tasksBaseDir}/${dir}`);
-              }
-            }
-
-            // Helper to generate serve hostname (matches TSK's generate_serve_hostname)
-            const generateServeHostname = (
-              taskName: string,
-              taskId: string,
-            ): string => {
-              const sanitizedName = taskName
-                .split("")
-                .map((c) => (/[a-zA-Z0-9]/.test(c) ? c.toLowerCase() : "-"))
-                .join("")
-                .replace(/^-+|-+$/g, "");
-              const shortId = taskId.slice(0, 8);
-              return sanitizedName ? `${sanitizedName}-${shortId}` : shortId;
-            };
-
-            // Load project config cache
-            const projectConfigCache = new Map<
-              string,
-              Record<string, { port: number; path: string; url?: string }>
-            >();
-            const loadProjectConfig = async (repoRoot: string) => {
-              if (projectConfigCache.has(repoRoot)) {
-                return projectConfigCache.get(repoRoot);
-              }
-              try {
-                const configPath = `${repoRoot}/.tsk/project.toml`;
-                const configContent = await fs.readFile(configPath, "utf-8");
-                const parsed = toml.parse(configContent) as {
-                  services?: Record<
-                    string,
-                    { port: number; path: string; url?: string }
-                  >;
-                };
-                projectConfigCache.set(repoRoot, parsed.services ?? {});
-                return parsed.services;
-              } catch {
-                projectConfigCache.set(repoRoot, {});
-                return {};
-              }
-            };
-
-            // Add transcripts_dir and URLs to each task
-            const enrichedTasks = await Promise.all(
-              tasks.map(async (task) => {
-                const taskDir = taskDirMap.get(task.id) ?? "";
-                const hostname = generateServeHostname(task.name, task.id);
-                const services = await loadProjectConfig(task.repo_root);
-
-                // Default Traefik port
-                const traefikPort = 8080;
-
-                // Find frontend and VNC services
-                let frontendUrl: string | undefined;
-                let vncUrl: string | undefined;
-
-                if (services) {
-                  // Look for frontend service (typically named "frontend" or "web" with path "/")
-                  const frontendService =
-                    services["frontend"] ?? services["web"];
-                  if (frontendService) {
-                    const displayPath =
-                      frontendService.url ?? frontendService.path ?? "/";
-                    frontendUrl = `http://${hostname}.localhost:${traefikPort}${displayPath}`;
-                  }
-
-                  // Look for VNC service
-                  const vncService = services["vnc"];
-                  if (vncService) {
-                    const displayPath =
-                      vncService.url ?? vncService.path ?? "/vnc";
-                    vncUrl = `http://${hostname}.localhost:${traefikPort}${displayPath}`;
-                  }
-                }
-
-                return {
-                  ...task,
-                  transcripts_dir: taskDir ? `${taskDir}/transcripts` : "",
-                  frontend_url: frontendUrl,
-                  vnc_url: vncUrl,
-                };
-              }),
-            );
-
-            return c.json(enrichedTasks);
-          } catch {
-            return c.json([]);
-          }
+          const response = await effectToResponse(c, tskController.listTasks());
+          return response;
         })
 
         .get("/api/tsk/tasks/:taskId/transcript", async (c) => {
-          const { taskId } = c.req.param();
-          const homeDir =
-            process.env["HOME"] ?? process.env["USERPROFILE"] ?? "";
-          const tasksBaseDir = `${homeDir}/.local/share/tsk/tasks`;
-
-          try {
-            const fs = await import("node:fs/promises");
-            const path = await import("node:path");
-
-            // Scan task directories to find the one matching the task ID
-            const taskDirs = await fs.readdir(tasksBaseDir);
-            let transcriptsDir = "";
-            for (const dir of taskDirs) {
-              if (dir.endsWith(`-${taskId}`)) {
-                transcriptsDir = `${tasksBaseDir}/${dir}/transcripts`;
-                break;
-              }
-            }
-
-            if (!transcriptsDir) {
-              return c.json({ conversations: [], error: "Task not found" });
-            }
-
-            // Find main session JSONL file in transcripts directory
-            // Prioritize files at current level before recursing into subdirectories
-            const findJsonl = async (dir: string): Promise<string | null> => {
-              try {
-                const entries = await fs.readdir(dir, { withFileTypes: true });
-
-                // First pass: look for .jsonl files at this level (not in subagents/)
-                for (const entry of entries) {
-                  if (entry.isFile() && entry.name.endsWith(".jsonl")) {
-                    return path.join(dir, entry.name);
-                  }
-                }
-
-                // Second pass: recurse into subdirectories (but skip 'subagents')
-                for (const entry of entries) {
-                  if (entry.isDirectory() && entry.name !== "subagents") {
-                    const found = await findJsonl(path.join(dir, entry.name));
-                    if (found) return found;
-                  }
-                }
-              } catch {
-                // Directory doesn't exist yet
-              }
-              return null;
-            };
-
-            const jsonlFile = await findJsonl(transcriptsDir);
-            if (!jsonlFile) {
-              return c.json({ conversations: [] });
-            }
-
-            const content = await fs.readFile(jsonlFile, "utf-8");
-            const lines = content.trim().split("\n").filter(Boolean);
-            const conversations = lines
-              .map((line) => {
-                try {
-                  return JSON.parse(line);
-                } catch {
-                  return { type: "x-error", line };
-                }
-              })
-              .filter(
-                (conv: { type: string }) =>
-                  conv.type === "user" ||
-                  conv.type === "assistant" ||
-                  conv.type === "system",
-              );
-
-            return c.json({ conversations });
-          } catch {
-            return c.json({ conversations: [] });
-          }
+          const response = await effectToResponse(
+            c,
+            tskController.getTaskTranscript({ ...c.req.param() }),
+          );
+          return response;
         })
+
+        .post(
+          "/api/tsk/tasks",
+          zValidator("json", createTaskRequestSchema),
+          async (c) => {
+            const response = await effectToResponse(
+              c,
+              tskController.createTask(c.req.valid("json")),
+            );
+            return response;
+          },
+        )
+
+        .delete("/api/tsk/tasks/:taskId", async (c) => {
+          const response = await effectToResponse(
+            c,
+            tskController.deleteTask({ ...c.req.param() }),
+          );
+          return response;
+        })
+
+        /**
+         * TerminalController Routes
+         */
+        .post(
+          "/api/terminals",
+          zValidator("json", createTerminalRequestSchema),
+          async (c) => {
+            const response = await effectToResponse(
+              c,
+              terminalController.createTerminal(c.req.valid("json")),
+            );
+            return response;
+          },
+        )
+
+        .get("/api/terminals", async (c) => {
+          const response = await effectToResponse(
+            c,
+            terminalController.listTerminals(),
+          );
+          return response;
+        })
+
+        .delete("/api/terminals/:sessionId", async (c) => {
+          const response = await effectToResponse(
+            c,
+            terminalController.destroyTerminal({ ...c.req.param() }),
+          );
+          return response;
+        })
+
+        .get(
+          "/api/terminals/:sessionId/ws",
+          upgradeWebSocket((c) => {
+            const sessionId = c.req.param("sessionId") ?? "";
+            return handleTerminalWebSocket(sessionId, terminalSessionService);
+          }),
+        )
     );
   });
 

@@ -2,22 +2,24 @@ import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeft,
-  Monitor,
-  Terminal,
-  MessageSquare,
   ExternalLink,
-  X,
   Focus,
+  MessageSquare,
+  Monitor,
+  SquareTerminal,
+  Terminal,
+  X,
   XCircle,
 } from "lucide-react";
 import {
   type FC,
-  useState,
   useCallback,
   useEffect,
   useMemo,
   useRef,
+  useState,
 } from "react";
+import { CreateTaskDialog } from "./CreateTaskDialog";
 import { tskTasksQuery } from "./queries";
 import { TskPane } from "./TskPane";
 
@@ -25,7 +27,7 @@ type TskDashboardProps = {
   taskIds: string[];
 };
 
-type GridViewMode = "logs" | "frontend" | "vnc";
+type GridViewMode = "logs" | "frontend" | "vnc" | "terminal";
 
 export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
   const { data: allTasks, isLoading, error } = useQuery(tskTasksQuery);
@@ -219,6 +221,7 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
           <code className="bg-muted px-1 rounded">tsk run --serve</code> or
           specify task IDs in the URL.
         </p>
+        <CreateTaskDialog />
       </div>
     );
   }
@@ -254,9 +257,11 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
     const allLogs = modes.every((m) => m === "logs");
     const allFrontend = modes.every((m) => m === "frontend");
     const allVnc = modes.every((m) => m === "vnc");
+    const allTerminal = modes.every((m) => m === "terminal");
     if (allLogs) return "logs";
     if (allFrontend) return "frontend";
     if (allVnc) return "vnc";
+    if (allTerminal) return "terminal";
     return "mixed";
   };
 
@@ -292,6 +297,7 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
       ) : (
         <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
           <div className="flex items-center gap-3">
+            <CreateTaskDialog />
             <span className="text-sm font-medium text-muted-foreground">
               {isFocusMode
                 ? `${tasks.length} focused`
@@ -363,6 +369,18 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
             >
               <Monitor className="w-3 h-3" />
               VNC
+            </button>
+            <button
+              type="button"
+              onClick={() => setAllTasksViewMode("terminal")}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
+                globalState === "terminal"
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted"
+              }`}
+            >
+              <SquareTerminal className="w-3 h-3" />
+              Terminal
             </button>
             <span className="text-muted-foreground mx-2">|</span>
             <button

@@ -32,7 +32,12 @@ import { SessionRepository } from "./core/session/infrastructure/SessionReposito
 import { VirtualConversationDatabase } from "./core/session/infrastructure/VirtualConversationDatabase";
 import { SessionController } from "./core/session/presentation/SessionController";
 import { SessionMetaService } from "./core/session/services/SessionMetaService";
-import { honoApp } from "./hono/app";
+import { TerminalController } from "./core/terminal/presentation/TerminalController";
+import { TerminalCleanupService } from "./core/terminal/services/TerminalCleanupService";
+import { TerminalSessionService } from "./core/terminal/services/TerminalSessionService";
+import { TskController } from "./core/tsk/presentation/TskController";
+import { TskService } from "./core/tsk/services/TskService";
+import { honoApp, injectWebSocket } from "./hono/app";
 import { InitializeService } from "./hono/initialize";
 import { AuthMiddleware } from "./hono/middleware/auth.middleware";
 import { routes } from "./hono/route";
@@ -79,6 +84,8 @@ export const startServer = async (options: CliOptions) => {
       Effect.provide(SchedulerController.Live),
       Effect.provide(FeatureFlagController.Live),
       Effect.provide(SearchController.Live),
+      Effect.provide(TskController.Live),
+      Effect.provide(TerminalController.Live),
     )
     .pipe(
       /** Application */
@@ -96,6 +103,9 @@ export const startServer = async (options: CliOptions) => {
       Effect.provide(SchedulerService.Live),
       Effect.provide(SchedulerConfigBaseDir.Live),
       Effect.provide(SearchService.Live),
+      Effect.provide(TskService.Live),
+      Effect.provide(TerminalCleanupService.Live),
+      Effect.provide(TerminalSessionService.Live),
     )
     .pipe(
       /** Infrastructure */
@@ -123,7 +133,7 @@ export const startServer = async (options: CliOptions) => {
   // biome-ignore lint/style/noProcessEnv: allow only here
   const hostname = options.hostname ?? process.env.HOSTNAME ?? "localhost";
 
-  serve(
+  const server = serve(
     {
       fetch: honoApp.fetch,
       port: parseInt(port, 10),
@@ -133,4 +143,6 @@ export const startServer = async (options: CliOptions) => {
       console.log(`Server is running on http://${hostname}:${info.port}`);
     },
   );
+
+  injectWebSocket(server);
 };
