@@ -11,10 +11,10 @@ import {
   FolderOpen,
   Info,
   Loader2,
+  MessageSquare,
   Monitor,
   Square,
   SquareTerminal,
-  Terminal,
   Trash2,
 } from "lucide-react";
 import {
@@ -137,13 +137,13 @@ const formatRelativeTime = (dateString: string | null): string => {
 
 const splitModeOptions: {
   mode: GridViewMode;
-  icon: typeof Terminal;
+  icon: typeof SquareTerminal;
   label: string;
 }[] = [
-  { mode: "logs", icon: Terminal, label: "Logs" },
+  { mode: "terminal", icon: SquareTerminal, label: "Terminal" },
+  { mode: "logs", icon: MessageSquare, label: "Conversation" },
   { mode: "frontend", icon: ExternalLink, label: "Frontend" },
   { mode: "vnc", icon: Monitor, label: "VNC" },
-  { mode: "terminal", icon: SquareTerminal, label: "Terminal" },
 ];
 
 const SplitPane: FC<{
@@ -249,7 +249,7 @@ const SplitPane: FC<{
 export const TskPane: FC<TskPaneProps> = ({
   task,
   isGridView = false,
-  viewMode: controlledViewMode = "logs",
+  viewMode: controlledViewMode = "terminal",
   onViewModeChange,
   showToolsOverlay = true,
   isSelected = false,
@@ -299,7 +299,7 @@ export const TskPane: FC<TskPaneProps> = ({
 
   // Track if split mode is active (detail view only feature)
   const [isSplitMode, setIsSplitMode] = useState(false);
-  const [splitLeft, setSplitLeft] = useState<GridViewMode>("logs");
+  const [splitLeft, setSplitLeft] = useState<GridViewMode>("terminal");
   const [splitRight, setSplitRight] = useState<GridViewMode>("frontend");
   const [showInfo, setShowInfo] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
@@ -360,14 +360,14 @@ export const TskPane: FC<TskPaneProps> = ({
         setSplitLeft("frontend");
         setSplitRight("vnc");
       } else if (task.frontend_url) {
-        setSplitLeft("logs");
+        setSplitLeft("terminal");
         setSplitRight("frontend");
       } else if (task.vnc_url) {
-        setSplitLeft("logs");
+        setSplitLeft("terminal");
         setSplitRight("vnc");
       } else {
-        setSplitLeft("logs");
-        setSplitRight("terminal");
+        setSplitLeft("terminal");
+        setSplitRight("logs");
       }
     }
     setIsSplitMode(true);
@@ -543,9 +543,9 @@ export const TskPane: FC<TskPaneProps> = ({
                 type="button"
                 onClick={() => handleViewModeChange("logs")}
                 className={`p-1.5 rounded hover:bg-muted ${viewMode === "logs" ? "bg-muted" : ""}`}
-                title="Show logs"
+                title="Conversation"
               >
-                <Terminal className="w-4 h-4" />
+                <MessageSquare className="w-4 h-4" />
               </button>
               {task.frontend_url && (
                 <button
@@ -586,9 +586,9 @@ export const TskPane: FC<TskPaneProps> = ({
                 type="button"
                 onClick={() => handleViewModeChange("logs")}
                 className={`p-1.5 rounded hover:bg-muted ${viewMode === "logs" ? "bg-muted" : ""}`}
-                title="Show logs"
+                title="Conversation"
               >
-                <Terminal className="w-4 h-4" />
+                <MessageSquare className="w-4 h-4" />
               </button>
               {task.frontend_url && (
                 <button

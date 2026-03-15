@@ -8,7 +8,6 @@ import {
   MessageSquare,
   Monitor,
   SquareTerminal,
-  Terminal,
   X,
   XCircle,
 } from "lucide-react";
@@ -226,7 +225,7 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
     if (newTaskIds.length > 0 && prevTaskIds.size > 0) {
       // Check if all existing tasks have the same view mode
       const existingModes = [...prevTaskIds].map(
-        (id) => taskViewModes[id] ?? "logs",
+        (id) => taskViewModes[id] ?? "terminal",
       );
       const allSameMode = existingModes.every((m) => m === existingModes[0]);
 
@@ -321,7 +320,7 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
 
   // Determine global toggle state based on individual task modes
   const getGlobalState = (): GridViewMode | "mixed" => {
-    const modes = tasks.map((t) => taskViewModes[t.id] ?? "logs");
+    const modes = tasks.map((t) => taskViewModes[t.id] ?? "terminal");
     const allLogs = modes.every((m) => m === "logs");
     const allFrontend = modes.every((m) => m === "frontend");
     const allVnc = modes.every((m) => m === "vnc");
@@ -405,6 +404,18 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
             </span>
             <button
               type="button"
+              onClick={() => setAllTasksViewMode("terminal")}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
+                globalState === "terminal"
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted"
+              }`}
+            >
+              <SquareTerminal className="w-3 h-3" />
+              Terminal
+            </button>
+            <button
+              type="button"
               onClick={() => setAllTasksViewMode("logs")}
               className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
                 globalState === "logs"
@@ -412,8 +423,8 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
                   : "hover:bg-muted"
               }`}
             >
-              <Terminal className="w-3 h-3" />
-              Logs
+              <MessageSquare className="w-3 h-3" />
+              Conversation
             </button>
             <button
               type="button"
@@ -438,18 +449,6 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
             >
               <Monitor className="w-3 h-3" />
               VNC
-            </button>
-            <button
-              type="button"
-              onClick={() => setAllTasksViewMode("terminal")}
-              className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
-                globalState === "terminal"
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
-              }`}
-            >
-              <SquareTerminal className="w-3 h-3" />
-              Terminal
             </button>
             <span className="text-muted-foreground mx-2">|</span>
             <button
