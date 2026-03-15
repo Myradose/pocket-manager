@@ -8,6 +8,7 @@ import {
   Copy,
   ExternalLink,
   Info,
+  Loader2,
   Monitor,
   SquareTerminal,
   Terminal,
@@ -144,9 +145,11 @@ export const TskPane: FC<TskPaneProps> = ({
   const navigate = useNavigate();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
 
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const handleDeleteConfirm = useCallback(() => {
     setShowDeleteDialog(false);
-    // Navigate back immediately so the user doesn't wait for the API
+    setIsDeleting(true);
     if (!isGridView) {
       navigate({ to: "/tsk", search: {} });
     }
@@ -310,7 +313,7 @@ export const TskPane: FC<TskPaneProps> = ({
 
   return (
     <div
-      className={`flex flex-col h-full border rounded-lg overflow-hidden bg-card ${isSelected && showSelectionControls ? "ring-2 ring-blue-600" : ""}`}
+      className={`relative flex flex-col h-full border rounded-lg overflow-hidden bg-card ${isSelected && showSelectionControls ? "ring-2 ring-blue-600" : ""}`}
     >
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/50">
@@ -645,6 +648,16 @@ export const TskPane: FC<TskPaneProps> = ({
           <TerminalPanel taskId={task.id} visible />
         )}
       </div>
+
+      {/* Deleting overlay */}
+      {isDeleting && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 backdrop-blur-sm rounded-lg">
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-sm">Deleting task...</span>
+          </div>
+        </div>
+      )}
 
       <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <DialogContent className="max-w-sm">
