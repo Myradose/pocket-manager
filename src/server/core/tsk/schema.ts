@@ -14,6 +14,7 @@ export type CreateTaskRequest = z.infer<typeof createTaskRequestSchema>;
 export type TskTaskResponse = {
   id: string;
   name: string;
+  name_source?: string;
   status: string;
   repo_root: string;
   project: string;

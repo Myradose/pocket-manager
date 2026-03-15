@@ -7,9 +7,9 @@ import { TskService } from "../services/TskService";
 const LayerImpl = Effect.gen(function* () {
   const tskService = yield* TskService;
 
-  const listTasks = () =>
+  const listTasks = (options?: { repo?: string }) =>
     Effect.gen(function* () {
-      const tasks = yield* tskService.listTasks();
+      const tasks = yield* tskService.listTasks(options);
       return {
         status: 200,
         response: tasks,
@@ -89,6 +89,40 @@ const LayerImpl = Effect.gen(function* () {
       } as const satisfies ControllerResponse;
     });
 
+  const renameTask = (options: { taskId: string; name: string }) =>
+    Effect.gen(function* () {
+      const result = yield* Effect.either(
+        tskService.renameTask(options.taskId, options.name),
+      );
+      if (Either.isLeft(result)) {
+        return {
+          status: 500,
+          response: { error: result.left.message },
+        } as const satisfies ControllerResponse;
+      }
+      return {
+        status: 200,
+        response: result.right,
+      } as const satisfies ControllerResponse;
+    });
+
+  const suggestName = (options: { taskId: string }) =>
+    Effect.gen(function* () {
+      const result = yield* Effect.either(
+        tskService.suggestName(options.taskId),
+      );
+      if (Either.isLeft(result)) {
+        return {
+          status: 500,
+          response: { error: result.left.message },
+        } as const satisfies ControllerResponse;
+      }
+      return {
+        status: 200,
+        response: result.right,
+      } as const satisfies ControllerResponse;
+    });
+
   const openPath = (options: { path: string; target: "explorer" | "vscode" }) =>
     Effect.gen(function* () {
       const result = yield* Effect.either(
@@ -113,6 +147,8 @@ const LayerImpl = Effect.gen(function* () {
     deleteTask,
     stopTask,
     continueTask,
+    renameTask,
+    suggestName,
     openPath,
   };
 });

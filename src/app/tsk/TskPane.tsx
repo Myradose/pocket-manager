@@ -35,6 +35,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { ConversationList } from "../projects/[projectId]/sessions/[sessionId]/components/conversationList/ConversationList";
+import { EditableTaskName } from "./EditableTaskName";
 import type { TskTask } from "./queries";
 import {
   tskTranscriptQuery,
@@ -532,7 +533,11 @@ export const TskPane: FC<TskPaneProps> = ({
               {task.name}
             </Link>
           ) : (
-            <span className="font-medium truncate text-sm">{task.name}</span>
+            <EditableTaskName
+              taskId={task.id}
+              name={task.name}
+              nameSource={task.name_source}
+            />
           )}
           <span className="text-xs text-muted-foreground">({task.id})</span>
         </div>

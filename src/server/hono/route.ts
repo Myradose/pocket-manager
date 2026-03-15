@@ -698,7 +698,11 @@ export const routes = (app: HonoAppType, options: CliOptions) =>
          * TskController Routes
          */
         .get("/api/tsk/tasks", async (c) => {
-          const response = await effectToResponse(c, tskController.listTasks());
+          const repo = c.req.query("repo");
+          const response = await effectToResponse(
+            c,
+            tskController.listTasks(repo ? { repo } : undefined),
+          );
           return response;
         })
 
@@ -742,6 +746,28 @@ export const routes = (app: HonoAppType, options: CliOptions) =>
           const response = await effectToResponse(
             c,
             tskController.continueTask({ ...c.req.param() }),
+          );
+          return response;
+        })
+
+        .patch(
+          "/api/tsk/tasks/:taskId/rename",
+          zValidator("json", z.object({ name: z.string().min(1) })),
+          async (c) => {
+            const { taskId } = c.req.param();
+            const { name } = c.req.valid("json");
+            const response = await effectToResponse(
+              c,
+              tskController.renameTask({ taskId, name }),
+            );
+            return response;
+          },
+        )
+
+        .post("/api/tsk/tasks/:taskId/suggest-name", async (c) => {
+          const response = await effectToResponse(
+            c,
+            tskController.suggestName({ ...c.req.param() }),
           );
           return response;
         })

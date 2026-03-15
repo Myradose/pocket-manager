@@ -25,6 +25,7 @@ import {
   useState,
 } from "react";
 import { CreateTaskDialog } from "./CreateTaskDialog";
+import { EditableTaskName } from "./EditableTaskName";
 import {
   type TskTask,
   tskTasksQuery,
@@ -136,13 +137,12 @@ const StoppedTaskRow: FC<{ task: TskTask }> = ({ task }) => {
   return (
     <div className="flex items-center gap-3 px-3 py-1.5 hover:bg-muted/50 rounded text-sm group">
       <div className={`w-2 h-2 rounded-full shrink-0 ${statusColor}`} />
-      <Link
-        to="/tsk"
-        search={{ tasks: task.id }}
-        className="font-medium truncate hover:underline min-w-0 flex-shrink"
-      >
-        {task.name}
-      </Link>
+      <EditableTaskName
+        taskId={task.id}
+        name={task.name}
+        nameSource={task.name_source}
+        className="font-medium truncate text-sm"
+      />
       <span className="text-xs text-muted-foreground shrink-0">{task.id}</span>
       <code className="text-xs text-muted-foreground truncate hidden sm:block max-w-48">
         {task.branch_name}
@@ -179,7 +179,12 @@ const StoppedTaskRow: FC<{ task: TskTask }> = ({ task }) => {
 };
 
 export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
-  const { data: allTasks, isLoading, error } = useQuery(tskTasksQuery);
+  const { workspacePath } = useWorkspacePath();
+  const {
+    data: allTasks,
+    isLoading,
+    error,
+  } = useQuery(tskTasksQuery(workspacePath || undefined));
   const navigate = useNavigate();
 
   // Track individual task view modes

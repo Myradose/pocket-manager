@@ -9,6 +9,7 @@ class TskApiError extends Data.TaggedError("TskApiError")<{
 type RawTask = {
   id: string;
   name: string;
+  name_source?: string;
   status: string;
   repo_root: string;
   project: string;
@@ -38,11 +39,13 @@ const getTskApiPort = () =>
   });
 
 const LayerImpl = Effect.gen(function* () {
-  const listTasks = () =>
+  const listTasks = (options?: { repo?: string }) =>
     Effect.tryPromise({
       try: async () => {
         const port = await Effect.runPromise(getTskApiPort());
-        const resp = await fetch(`http://localhost:${port}/tasks?limit=1000`);
+        const params = new URLSearchParams({ limit: "1000" });
+        if (options?.repo) params.set("repo", options.repo);
+        const resp = await fetch(`http://localhost:${port}/tasks?${params}`);
         if (!resp.ok) return [] satisfies TskTaskResponse[];
 
         const data = (await resp.json()) as { tasks: RawTask[] };
@@ -209,6 +212,54 @@ const LayerImpl = Effect.gen(function* () {
         }),
     });
 
+  const renameTask = (taskId: string, name: string) =>
+    Effect.tryPromise({
+      try: async () => {
+        const port = await Effect.runPromise(getTskApiPort());
+        const response = await fetch(
+          `http://localhost:${port}/tasks/${taskId}/rename`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ name }),
+          },
+        );
+        if (!response.ok) {
+          const data = (await response.json().catch(() => ({}))) as {
+            error?: string;
+          };
+          throw new Error(data.error ?? `tsk API returned ${response.status}`);
+        }
+        return (await response.json()) as RawTask;
+      },
+      catch: (error) =>
+        new TskApiError({
+          message:
+            error instanceof Error ? error.message : "Failed to rename task",
+        }),
+    });
+
+  const suggestName = (taskId: string) =>
+    Effect.tryPromise({
+      try: async () => {
+        const port = await Effect.runPromise(getTskApiPort());
+        const response = await fetch(
+          `http://localhost:${port}/tasks/${taskId}/suggest-name`,
+          { method: "POST" },
+        );
+        if (!response.ok) {
+          if (response.status === 404) return { name: null };
+          throw new Error(`tsk API returned ${response.status}`);
+        }
+        return (await response.json()) as { name: string | null };
+      },
+      catch: (error) =>
+        new TskApiError({
+          message:
+            error instanceof Error ? error.message : "Failed to suggest name",
+        }),
+    });
+
   const openPath = (filePath: string, target: "explorer" | "vscode") =>
     Effect.tryPromise({
       try: async () => {
@@ -254,6 +305,8 @@ const LayerImpl = Effect.gen(function* () {
     deleteTask,
     stopTask,
     continueTask,
+    renameTask,
+    suggestName,
     openPath,
   };
 });
