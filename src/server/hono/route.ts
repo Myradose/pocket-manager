@@ -738,6 +738,25 @@ export const routes = (app: HonoAppType, options: CliOptions) =>
           return response;
         })
 
+        .post(
+          "/api/tsk/open",
+          zValidator(
+            "json",
+            z.object({
+              path: z.string().min(1),
+              target: z.enum(["explorer", "vscode"]),
+            }),
+          ),
+          async (c) => {
+            const body = c.req.valid("json");
+            const response = await effectToResponse(
+              c,
+              tskController.openPath(body),
+            );
+            return response;
+          },
+        )
+
         /**
          * TerminalController Routes
          */

@@ -4,9 +4,11 @@ import {
   ArrowDown,
   Check,
   CheckCheck,
+  Code,
   Columns2,
   Copy,
   ExternalLink,
+  FolderOpen,
   Info,
   Loader2,
   Monitor,
@@ -36,6 +38,7 @@ import type { TskTask } from "./queries";
 import {
   tskTranscriptQuery,
   useDeleteTskTask,
+  useOpenPath,
   useStopTskTask,
 } from "./queries";
 import { TerminalPanel } from "./terminal/TerminalPanel";
@@ -148,6 +151,7 @@ export const TskPane: FC<TskPaneProps> = ({
 }) => {
   const deleteTask = useDeleteTskTask();
   const stopTask = useStopTskTask();
+  const openPath = useOpenPath();
   const navigate = useNavigate();
   const [showStopDialog, setShowStopDialog] = useState(false);
 
@@ -580,6 +584,41 @@ export const TskPane: FC<TskPaneProps> = ({
                     VNC
                   </a>
                 )}
+              </div>
+            </div>
+          )}
+          {task.copied_repo_path && (
+            <div className="flex items-center gap-2 pt-1">
+              <span className="text-muted-foreground w-16">Open:</span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (task.copied_repo_path)
+                      openPath.mutate({
+                        path: task.copied_repo_path,
+                        target: "explorer",
+                      });
+                  }}
+                  className="text-blue-500 hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <FolderOpen className="w-3 h-3" />
+                  Explorer
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (task.copied_repo_path)
+                      openPath.mutate({
+                        path: task.copied_repo_path,
+                        target: "vscode",
+                      });
+                  }}
+                  className="text-blue-500 hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  <Code className="w-3 h-3" />
+                  VS Code
+                </button>
               </div>
             </div>
           )}

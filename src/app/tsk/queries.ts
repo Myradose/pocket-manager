@@ -14,6 +14,7 @@ export type TskTask = {
   transcripts_dir: string;
   frontend_url?: string;
   vnc_url?: string;
+  copied_repo_path?: string;
 };
 
 export const tskTasksQuery = {
@@ -84,6 +85,22 @@ export const useDeleteTskTask = () => {
     },
   });
 };
+
+export const useOpenPath = () =>
+  useMutation({
+    mutationFn: async (params: {
+      path: string;
+      target: "explorer" | "vscode";
+    }) => {
+      const response = await honoClient.api.tsk.open.$post({
+        json: params,
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to open path: ${response.statusText}`);
+      }
+      return await response.json();
+    },
+  });
 
 export const useStopTskTask = () => {
   const queryClient = useQueryClient();

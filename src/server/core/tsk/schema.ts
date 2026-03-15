@@ -24,4 +24,5 @@ export type TskTaskResponse = {
   transcripts_dir: string;
   frontend_url?: string;
   vnc_url?: string;
+  copied_repo_path?: string;
 };

@@ -17,6 +17,7 @@ type RawTask = {
   created_at: string;
   started_at: string | null;
   container_id?: string;
+  copied_repo_path?: string;
 };
 
 const getHomeDir = () =>
@@ -320,12 +321,51 @@ const LayerImpl = Effect.gen(function* () {
         }),
     });
 
+  const openPath = (filePath: string, target: "explorer" | "vscode") =>
+    Effect.tryPromise({
+      try: async () => {
+        const { spawn } = await import("node:child_process");
+
+        if (target === "vscode") {
+          spawn("code", [filePath], { stdio: "ignore" });
+          return { success: true };
+        }
+
+        // Detect WSL for explorer
+        const isWsl = await import("node:fs")
+          .then((fsMod) => fsMod.promises.readFile("/proc/version", "utf-8"))
+          .then((v) => v.includes("microsoft") || v.includes("Microsoft"))
+          .catch(() => false);
+
+        const openers =
+          process.platform === "darwin"
+            ? ["open"]
+            : isWsl
+              ? ["wslview", "explorer.exe"]
+              : ["xdg-open"];
+
+        for (const cmd of openers) {
+          try {
+            spawn(cmd, [filePath], { stdio: "ignore" });
+            return { success: true };
+          } catch {}
+        }
+        throw new Error("No file opener found");
+      },
+      catch: (error) =>
+        new TskApiError({
+          message:
+            error instanceof Error ? error.message : "Failed to open path",
+        }),
+    });
+
   return {
     listTasks,
     getTaskTranscript,
     createTask,
     deleteTask,
     stopTask,
+    openPath,
     generateServeHostname,
     enrichTask,
   };
