@@ -738,6 +738,14 @@ export const routes = (app: HonoAppType, options: CliOptions) =>
           return response;
         })
 
+        .post("/api/tsk/tasks/:taskId/continue", async (c) => {
+          const response = await effectToResponse(
+            c,
+            tskController.continueTask({ ...c.req.param() }),
+          );
+          return response;
+        })
+
         .post(
           "/api/tsk/open",
           zValidator(

@@ -103,6 +103,26 @@ export const useOpenPath = () =>
     },
   });
 
+export const useContinueTskTask = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (taskId: string) => {
+      const response = await honoClient.api.tsk.tasks[":taskId"].continue.$post(
+        {
+          param: { taskId },
+        },
+      );
+      if (!response.ok) {
+        throw new Error(`Failed to continue task: ${response.statusText}`);
+      }
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tsk", "tasks"] });
+    },
+  });
+};
+
 export const useStopTskTask = () => {
   const queryClient = useQueryClient();
   return useMutation({

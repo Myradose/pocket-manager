@@ -13,6 +13,7 @@ import {
   Loader2,
   MessageSquare,
   Monitor,
+  Play,
   Square,
   SquareTerminal,
   Trash2,
@@ -37,6 +38,7 @@ import { ConversationList } from "../projects/[projectId]/sessions/[sessionId]/c
 import type { TskTask } from "./queries";
 import {
   tskTranscriptQuery,
+  useContinueTskTask,
   useDeleteTskTask,
   useOpenPath,
   useStopTskTask,
@@ -267,6 +269,7 @@ export const TskPane: FC<TskPaneProps> = ({
 }) => {
   const deleteTask = useDeleteTskTask();
   const stopTask = useStopTskTask();
+  const continueTask = useContinueTskTask();
   const openPath = useOpenPath();
   const navigate = useNavigate();
   const [showStopDialog, setShowStopDialog] = useState(false);
@@ -329,6 +332,19 @@ export const TskPane: FC<TskPaneProps> = ({
       setIsSplitMode(false);
     }
   }, [isGridView]);
+
+  // Stopped tasks have no container — force to conversation if on a container-dependent mode
+  const isStopped = task.status === "STOPPED";
+  useEffect(() => {
+    if (
+      isStopped &&
+      (controlledViewMode === "terminal" ||
+        controlledViewMode === "frontend" ||
+        controlledViewMode === "vnc")
+    ) {
+      onViewModeChange?.("conversation");
+    }
+  }, [isStopped, controlledViewMode, onViewModeChange]);
 
   // Effective view mode: use split if active (detail only), otherwise use controlled mode
   const effectiveViewMode: DetailViewMode =
@@ -536,6 +552,32 @@ export const TskPane: FC<TskPaneProps> = ({
               )}
             </button>
           )}
+          {task.status === "STOPPED" && (
+            <>
+              <button
+                type="button"
+                onClick={() => continueTask.mutate(task.id)}
+                disabled={continueTask.isPending}
+                className="p-1.5 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600"
+                title="Continue task"
+              >
+                {continueTask.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Play className="w-4 h-4 fill-current" />
+                )}
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowStopDialog(true)}
+                disabled={deleteTask.isPending}
+                className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"
+                title="Delete task"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </>
+          )}
           <button
             type="button"
             onClick={() => setShowInfo((prev) => !prev)}
@@ -548,7 +590,8 @@ export const TskPane: FC<TskPaneProps> = ({
           {isGridView ? (
             /* Grid view: terminal/conversation/frontend/VNC toggle */
             <>
-              {(task.status === "SERVING" || task.status === "RUNNING") &&
+              {!isStopped &&
+                (task.status === "SERVING" || task.status === "RUNNING") &&
                 task.container_id && (
                   <button
                     type="button"
@@ -567,7 +610,7 @@ export const TskPane: FC<TskPaneProps> = ({
               >
                 <MessageSquare className="w-4 h-4" />
               </button>
-              {task.frontend_url && (
+              {!isStopped && task.frontend_url && (
                 <button
                   type="button"
                   onClick={() => handleViewModeChange("frontend")}
@@ -577,7 +620,7 @@ export const TskPane: FC<TskPaneProps> = ({
                   <ExternalLink className="w-4 h-4" />
                 </button>
               )}
-              {task.vnc_url && (
+              {!isStopped && task.vnc_url && (
                 <button
                   type="button"
                   onClick={() => handleViewModeChange("vnc")}
@@ -591,7 +634,8 @@ export const TskPane: FC<TskPaneProps> = ({
           ) : (
             /* Detail view: all options including split */
             <>
-              {(task.status === "SERVING" || task.status === "RUNNING") &&
+              {!isStopped &&
+                (task.status === "SERVING" || task.status === "RUNNING") &&
                 task.container_id && (
                   <button
                     type="button"
@@ -610,7 +654,7 @@ export const TskPane: FC<TskPaneProps> = ({
               >
                 <MessageSquare className="w-4 h-4" />
               </button>
-              {task.frontend_url && (
+              {!isStopped && task.frontend_url && (
                 <button
                   type="button"
                   onClick={() => handleViewModeChange("frontend")}
@@ -620,7 +664,7 @@ export const TskPane: FC<TskPaneProps> = ({
                   <ExternalLink className="w-4 h-4" />
                 </button>
               )}
-              {task.vnc_url && (
+              {!isStopped && task.vnc_url && (
                 <button
                   type="button"
                   onClick={() => handleViewModeChange("vnc")}
@@ -630,14 +674,16 @@ export const TskPane: FC<TskPaneProps> = ({
                   <Monitor className="w-4 h-4" />
                 </button>
               )}
-              <button
-                type="button"
-                onClick={handleSplitMode}
-                className={`p-1.5 rounded hover:bg-muted ${viewMode === "split" ? "bg-muted" : ""}`}
-                title="Split view"
-              >
-                <Columns2 className="w-4 h-4" />
-              </button>
+              {!isStopped && (
+                <button
+                  type="button"
+                  onClick={handleSplitMode}
+                  className={`p-1.5 rounded hover:bg-muted ${viewMode === "split" ? "bg-muted" : ""}`}
+                  title="Split view"
+                >
+                  <Columns2 className="w-4 h-4" />
+                </button>
+              )}
             </>
           )}
         </div>

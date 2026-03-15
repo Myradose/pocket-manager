@@ -72,6 +72,23 @@ const LayerImpl = Effect.gen(function* () {
       } as const satisfies ControllerResponse;
     });
 
+  const continueTask = (options: { taskId: string }) =>
+    Effect.gen(function* () {
+      const result = yield* Effect.either(
+        tskService.continueTask(options.taskId),
+      );
+      if (Either.isLeft(result)) {
+        return {
+          status: 500,
+          response: { error: result.left.message },
+        } as const satisfies ControllerResponse;
+      }
+      return {
+        status: 200,
+        response: result.right,
+      } as const satisfies ControllerResponse;
+    });
+
   const openPath = (options: { path: string; target: "explorer" | "vscode" }) =>
     Effect.gen(function* () {
       const result = yield* Effect.either(
@@ -95,6 +112,7 @@ const LayerImpl = Effect.gen(function* () {
     createTask,
     deleteTask,
     stopTask,
+    continueTask,
     openPath,
   };
 });

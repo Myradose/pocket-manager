@@ -189,6 +189,26 @@ const LayerImpl = Effect.gen(function* () {
         }),
     });
 
+  const continueTask = (taskId: string) =>
+    Effect.tryPromise({
+      try: async () => {
+        const port = await Effect.runPromise(getTskApiPort());
+        const response = await fetch(
+          `http://localhost:${port}/tasks/${taskId}/continue`,
+          { method: "POST" },
+        );
+        if (!response.ok) {
+          throw new Error(`tsk API returned ${response.status}`);
+        }
+        return (await response.json()) as object;
+      },
+      catch: (error) =>
+        new TskApiError({
+          message:
+            error instanceof Error ? error.message : "Failed to continue task",
+        }),
+    });
+
   const openPath = (filePath: string, target: "explorer" | "vscode") =>
     Effect.tryPromise({
       try: async () => {
@@ -233,6 +253,7 @@ const LayerImpl = Effect.gen(function* () {
     createTask,
     deleteTask,
     stopTask,
+    continueTask,
     openPath,
   };
 });

@@ -25,6 +25,8 @@ const mockTskServiceLayer = Layer.mock(TskService, {
   getTaskTranscript: () => Effect.succeed({ conversations: [] }),
   createTask: () => Effect.succeed({ id: "new-task", status: "QUEUED" }),
   deleteTask: () => Effect.succeed({ success: true }),
+  stopTask: () => Effect.succeed({ success: true }),
+  continueTask: () => Effect.succeed({ id: "task1", status: "QUEUED" }),
 });
 
 const mockTerminalSessionServiceLayer = Layer.mock(TerminalSessionService, {
