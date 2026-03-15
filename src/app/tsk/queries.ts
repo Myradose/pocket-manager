@@ -15,6 +15,7 @@ export type TskTask = {
   frontend_url?: string;
   vnc_url?: string;
   copied_repo_path?: string;
+  submodules?: string[];
 };
 
 export const tskTasksQuery = {

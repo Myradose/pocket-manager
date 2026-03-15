@@ -528,6 +528,14 @@ export const TskPane: FC<TskPaneProps> = ({
               )}
             </button>
           </div>
+          {task.submodules && task.submodules.length > 0 && (
+            <div className="flex items-center gap-2">
+              <span className="text-muted-foreground w-16">Submod:</span>
+              <span className="text-muted-foreground">
+                {task.submodules.join(", ")} (same branch)
+              </span>
+            </div>
+          )}
           <div className="flex items-center gap-2">
             <span className="text-muted-foreground w-16">Project:</span>
             <span>{task.project}</span>

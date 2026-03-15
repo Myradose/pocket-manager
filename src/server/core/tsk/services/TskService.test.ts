@@ -77,6 +77,7 @@ describe("TskService", () => {
         task,
         "/tmp/tasks/hash-abc12345",
         services,
+        [],
       );
 
       expect(result.transcripts_dir).toBe(
@@ -102,7 +103,7 @@ describe("TskService", () => {
         started_at: null,
       };
 
-      const result = service.enrichTask(task, "", {});
+      const result = service.enrichTask(task, "", {}, []);
 
       expect(result.transcripts_dir).toBe("");
       expect(result.frontend_url).toBeUndefined();

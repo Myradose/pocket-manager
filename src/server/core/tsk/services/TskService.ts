@@ -81,10 +81,28 @@ const LayerImpl = Effect.gen(function* () {
       ),
     );
 
+  const parseGitmodules = (repoRoot: string) =>
+    Effect.gen(function* () {
+      const gitmodulesPath = pathService.join(repoRoot, ".gitmodules");
+      const exists = yield* fs.exists(gitmodulesPath);
+      if (!exists) return [];
+
+      const content = yield* fs.readFileString(gitmodulesPath);
+      const paths: string[] = [];
+      for (const line of content.split("\n")) {
+        const trimmed = line.trim();
+        if (trimmed.startsWith("path = ")) {
+          paths.push(trimmed.slice(7));
+        }
+      }
+      return paths;
+    }).pipe(Effect.catchAll(() => Effect.succeed([] as string[])));
+
   const enrichTask = (
     task: RawTask,
     taskDir: string,
     services: Record<string, { port: number; path: string; url?: string }>,
+    submodules: string[],
   ): TskTaskResponse => {
     const hostname = generateServeHostname(task.name, task.id);
     const traefikPort = 8080;
@@ -109,6 +127,7 @@ const LayerImpl = Effect.gen(function* () {
       transcripts_dir: taskDir ? `${taskDir}/transcripts` : "",
       frontend_url: frontendUrl,
       vnc_url: vncUrl,
+      submodules: submodules.length > 0 ? submodules : undefined,
     };
   };
 
@@ -153,6 +172,7 @@ const LayerImpl = Effect.gen(function* () {
         string,
         Record<string, { port: number; path: string; url?: string }>
       >();
+      const submoduleCache = new Map<string, string[]>();
 
       const enrichedTasks: TskTaskResponse[] = [];
       for (const task of tasks) {
@@ -161,8 +181,13 @@ const LayerImpl = Effect.gen(function* () {
           services = yield* loadProjectConfig(task.repo_root);
           projectConfigCache.set(task.repo_root, services);
         }
+        let submodules = submoduleCache.get(task.repo_root);
+        if (submodules === undefined) {
+          submodules = yield* parseGitmodules(task.repo_root);
+          submoduleCache.set(task.repo_root, submodules);
+        }
         const taskDir = taskDirMap.get(task.id) ?? "";
-        enrichedTasks.push(enrichTask(task, taskDir, services));
+        enrichedTasks.push(enrichTask(task, taskDir, services, submodules));
       }
 
       return enrichedTasks;
