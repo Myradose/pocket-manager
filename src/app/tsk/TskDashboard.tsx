@@ -4,6 +4,7 @@ import {
   ArrowLeft,
   ExternalLink,
   Focus,
+  FolderOpen,
   MessageSquare,
   Monitor,
   SquareTerminal,
@@ -22,12 +23,76 @@ import {
 import { CreateTaskDialog } from "./CreateTaskDialog";
 import { tskTasksQuery } from "./queries";
 import { TskPane } from "./TskPane";
+import { useWorkspacePath } from "./useWorkspacePath";
 
 type TskDashboardProps = {
   taskIds: string[];
 };
 
 type GridViewMode = "logs" | "frontend" | "vnc" | "terminal";
+
+const WorkspaceSelector: FC = () => {
+  const { workspacePath, setWorkspacePath } = useWorkspacePath();
+  const [isEditing, setIsEditing] = useState(false);
+  const [editValue, setEditValue] = useState("");
+
+  const handleStartEdit = () => {
+    setEditValue(workspacePath);
+    setIsEditing(true);
+  };
+
+  const handleSave = () => {
+    setWorkspacePath(editValue.trim());
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter") handleSave();
+    if (e.key === "Escape") setIsEditing(false);
+  };
+
+  if (isEditing) {
+    return (
+      <div className="flex items-center gap-1">
+        <FolderOpen className="w-3 h-3 text-muted-foreground shrink-0" />
+        <input
+          type="text"
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onKeyDown={handleKeyDown}
+          onBlur={handleSave}
+          className="px-2 py-0.5 rounded border bg-background text-xs font-mono w-56"
+          placeholder="/path/to/repo"
+        />
+      </div>
+    );
+  }
+
+  if (!workspacePath) {
+    return (
+      <button
+        type="button"
+        onClick={handleStartEdit}
+        className="flex items-center gap-1 px-2 py-1 rounded text-xs text-muted-foreground hover:bg-muted"
+      >
+        <FolderOpen className="w-3 h-3" />
+        Set workspace
+      </button>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleStartEdit}
+      className="flex items-center gap-1 px-2 py-1 rounded text-xs hover:bg-muted min-w-0"
+      title={workspacePath}
+    >
+      <FolderOpen className="w-3 h-3 text-muted-foreground shrink-0" />
+      <span className="font-mono truncate max-w-48">{workspacePath}</span>
+    </button>
+  );
+};
 
 export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
   const { data: allTasks, isLoading, error } = useQuery(tskTasksQuery);
@@ -221,7 +286,10 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
           <code className="bg-muted px-1 rounded">tsk run --serve</code> or
           specify task IDs in the URL.
         </p>
-        <CreateTaskDialog />
+        <div className="flex items-center gap-3">
+          <CreateTaskDialog />
+          <WorkspaceSelector />
+        </div>
       </div>
     );
   }
@@ -298,6 +366,7 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
         <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
           <div className="flex items-center gap-3">
             <CreateTaskDialog />
+            <WorkspaceSelector />
             <span className="text-sm font-medium text-muted-foreground">
               {isFocusMode
                 ? `${tasks.length} focused`

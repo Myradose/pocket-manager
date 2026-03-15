@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { ChevronDown, Plus } from "lucide-react";
 import { type FC, useState } from "react";
 import {
   Dialog,
@@ -10,29 +10,35 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useCreateTskTask } from "./queries";
+import { useWorkspacePath } from "./useWorkspacePath";
 
 export const CreateTaskDialog: FC = () => {
   const [open, setOpen] = useState(false);
-  const [repoPath, setRepoPath] = useState("");
   const [name, setName] = useState("");
   const [serve, setServe] = useState(true);
+  const [showRepoOverride, setShowRepoOverride] = useState(false);
+  const [repoOverride, setRepoOverride] = useState("");
+  const { workspacePath } = useWorkspacePath();
 
   const createTask = useCreateTskTask();
+
+  const effectiveRepoPath = showRepoOverride ? repoOverride : workspacePath;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     createTask.mutate(
       {
-        repo_path: repoPath,
+        repo_path: effectiveRepoPath,
         name: name || undefined,
         serve,
       },
       {
         onSuccess: () => {
           setOpen(false);
-          setRepoPath("");
           setName("");
           setServe(true);
+          setShowRepoOverride(false);
+          setRepoOverride("");
         },
       },
     );
@@ -57,21 +63,46 @@ export const CreateTaskDialog: FC = () => {
             inside the container.
           </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <label htmlFor="task-repo" className="text-sm font-medium">
-              Repository Path
-            </label>
-            <input
-              id="task-repo"
-              type="text"
-              value={repoPath}
-              onChange={(e) => setRepoPath(e.target.value)}
-              className="w-full px-3 py-2 rounded border bg-background text-sm"
-              placeholder="/path/to/repo"
-              required
-            />
-          </div>
+        <form onSubmit={handleSubmit} className="space-y-4 min-w-0">
+          {workspacePath && !showRepoOverride ? (
+            <div className="space-y-1">
+              <span className="text-sm font-medium">Repository</span>
+              <div className="flex items-center gap-2 min-w-0">
+                <code className="min-w-0 flex-1 px-3 py-2 rounded border bg-muted text-sm truncate block">
+                  {workspacePath}
+                </code>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowRepoOverride(true);
+                    setRepoOverride(workspacePath);
+                  }}
+                  className="shrink-0 p-2 rounded hover:bg-muted text-muted-foreground"
+                  title="Use a different path"
+                >
+                  <ChevronDown className="w-4 h-4" />
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <label htmlFor="task-repo" className="text-sm font-medium">
+                Repository Path
+              </label>
+              <input
+                id="task-repo"
+                type="text"
+                value={showRepoOverride ? repoOverride : ""}
+                onChange={(e) => setRepoOverride(e.target.value)}
+                className="w-full px-3 py-2 rounded border bg-background text-sm"
+                placeholder="/path/to/repo"
+                required
+              />
+              <p className="text-xs text-muted-foreground">
+                Set a workspace in the dashboard header to remember this.
+              </p>
+            </div>
+          )}
           <div className="space-y-2">
             <label htmlFor="task-name" className="text-sm font-medium">
               Name{" "}
@@ -110,7 +141,7 @@ export const CreateTaskDialog: FC = () => {
             </button>
             <button
               type="submit"
-              disabled={createTask.isPending || !repoPath}
+              disabled={createTask.isPending || !effectiveRepoPath}
               className="px-4 py-2 rounded text-sm bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
             >
               {createTask.isPending ? "Creating..." : "Create"}
