@@ -43,8 +43,13 @@ import {
 } from "./queries";
 import { TerminalPanel } from "./terminal/TerminalPanel";
 
-type GridViewMode = "logs" | "frontend" | "vnc" | "terminal";
-type DetailViewMode = "logs" | "frontend" | "vnc" | "split" | "terminal";
+type GridViewMode = "conversation" | "frontend" | "vnc" | "terminal";
+type DetailViewMode =
+  | "conversation"
+  | "frontend"
+  | "vnc"
+  | "split"
+  | "terminal";
 
 type TskPaneProps = {
   task: TskTask;
@@ -141,7 +146,7 @@ const splitModeOptions: {
   label: string;
 }[] = [
   { mode: "terminal", icon: SquareTerminal, label: "Terminal" },
-  { mode: "logs", icon: MessageSquare, label: "Conversation" },
+  { mode: "conversation", icon: MessageSquare, label: "Conversation" },
   { mode: "frontend", icon: ExternalLink, label: "Frontend" },
   { mode: "vnc", icon: Monitor, label: "VNC" },
 ];
@@ -168,7 +173,7 @@ const SplitPane: FC<{
 
   const content = (() => {
     switch (mode) {
-      case "logs":
+      case "conversation":
         return (
           <div className="h-full overflow-auto p-2">
             {conversations.length > 0 ? (
@@ -329,13 +334,17 @@ export const TskPane: FC<TskPaneProps> = ({
   const effectiveViewMode: DetailViewMode =
     !isGridView && isSplitMode ? "split" : controlledViewMode;
 
-  // Restore scroll position when returning to logs view
+  // Restore scroll position when returning to conversation view
   useEffect(() => {
-    const wasLogs = prevViewMode.current === "logs";
-    const isLogs = effectiveViewMode === "logs";
+    const wasConversation = prevViewMode.current === "conversation";
+    const isConversation = effectiveViewMode === "conversation";
 
-    // Entering logs view - restore position after render
-    if (!wasLogs && isLogs && savedScrollPosition !== undefined) {
+    // Entering conversation view - restore position after render
+    if (
+      !wasConversation &&
+      isConversation &&
+      savedScrollPosition !== undefined
+    ) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           if (scrollRef.current) {
@@ -355,7 +364,7 @@ export const TskPane: FC<TskPaneProps> = ({
 
   const handleSplitMode = () => {
     if (!isSplitMode) {
-      // Set defaults: prefer frontend+vnc, fall back to logs+frontend, etc.
+      // Set defaults: prefer frontend+vnc, fall back to terminal+frontend, etc.
       if (task.frontend_url && task.vnc_url) {
         setSplitLeft("frontend");
         setSplitRight("vnc");
@@ -367,7 +376,7 @@ export const TskPane: FC<TskPaneProps> = ({
         setSplitRight("vnc");
       } else {
         setSplitLeft("terminal");
-        setSplitRight("logs");
+        setSplitRight("conversation");
       }
     }
     setIsSplitMode(true);
@@ -392,7 +401,7 @@ export const TskPane: FC<TskPaneProps> = ({
   // Auto-scroll to bottom when conversations change (only if already at bottom)
   useEffect(() => {
     if (!autoScroll || !scrollRef.current || conversations.length === 0) return;
-    if (effectiveViewMode !== "logs") return;
+    if (effectiveViewMode !== "conversation") return;
 
     // Use double rAF to ensure DOM is fully rendered and measured
     requestAnimationFrame(() => {
@@ -537,12 +546,23 @@ export const TskPane: FC<TskPaneProps> = ({
           </button>
           <span className="text-muted-foreground mx-1">|</span>
           {isGridView ? (
-            /* Grid view: logs/frontend/VNC toggle */
+            /* Grid view: terminal/conversation/frontend/VNC toggle */
             <>
+              {(task.status === "SERVING" || task.status === "RUNNING") &&
+                task.container_id && (
+                  <button
+                    type="button"
+                    onClick={() => handleViewModeChange("terminal")}
+                    className={`p-1.5 rounded hover:bg-muted ${viewMode === "terminal" ? "bg-muted" : ""}`}
+                    title="Open terminal"
+                  >
+                    <SquareTerminal className="w-4 h-4" />
+                  </button>
+                )}
               <button
                 type="button"
-                onClick={() => handleViewModeChange("logs")}
-                className={`p-1.5 rounded hover:bg-muted ${viewMode === "logs" ? "bg-muted" : ""}`}
+                onClick={() => handleViewModeChange("conversation")}
+                className={`p-1.5 rounded hover:bg-muted ${viewMode === "conversation" ? "bg-muted" : ""}`}
                 title="Conversation"
               >
                 <MessageSquare className="w-4 h-4" />
@@ -567,25 +587,25 @@ export const TskPane: FC<TskPaneProps> = ({
                   <Monitor className="w-4 h-4" />
                 </button>
               )}
-              {(task.status === "SERVING" || task.status === "RUNNING") &&
-                task.container_id && (
-                  <button
-                    type="button"
-                    onClick={() => handleViewModeChange("terminal")}
-                    className={`p-1.5 rounded hover:bg-muted ${viewMode === "terminal" ? "bg-muted" : ""}`}
-                    title="Open terminal"
-                  >
-                    <SquareTerminal className="w-4 h-4" />
-                  </button>
-                )}
             </>
           ) : (
             /* Detail view: all options including split */
             <>
+              {(task.status === "SERVING" || task.status === "RUNNING") &&
+                task.container_id && (
+                  <button
+                    type="button"
+                    onClick={() => handleViewModeChange("terminal")}
+                    className={`p-1.5 rounded hover:bg-muted ${viewMode === "terminal" ? "bg-muted" : ""}`}
+                    title="Open terminal"
+                  >
+                    <SquareTerminal className="w-4 h-4" />
+                  </button>
+                )}
               <button
                 type="button"
-                onClick={() => handleViewModeChange("logs")}
-                className={`p-1.5 rounded hover:bg-muted ${viewMode === "logs" ? "bg-muted" : ""}`}
+                onClick={() => handleViewModeChange("conversation")}
+                className={`p-1.5 rounded hover:bg-muted ${viewMode === "conversation" ? "bg-muted" : ""}`}
                 title="Conversation"
               >
                 <MessageSquare className="w-4 h-4" />
@@ -610,17 +630,6 @@ export const TskPane: FC<TskPaneProps> = ({
                   <Monitor className="w-4 h-4" />
                 </button>
               )}
-              {(task.status === "SERVING" || task.status === "RUNNING") &&
-                task.container_id && (
-                  <button
-                    type="button"
-                    onClick={() => handleViewModeChange("terminal")}
-                    className={`p-1.5 rounded hover:bg-muted ${viewMode === "terminal" ? "bg-muted" : ""}`}
-                    title="Open terminal"
-                  >
-                    <SquareTerminal className="w-4 h-4" />
-                  </button>
-                )}
               <button
                 type="button"
                 onClick={handleSplitMode}
@@ -769,7 +778,7 @@ export const TskPane: FC<TskPaneProps> = ({
             : undefined
         }
       >
-        {viewMode === "logs" && (
+        {viewMode === "conversation" && (
           <div className="relative h-full">
             <div
               ref={scrollRef}

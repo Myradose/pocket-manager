@@ -28,7 +28,7 @@ type TskDashboardProps = {
   taskIds: string[];
 };
 
-type GridViewMode = "logs" | "frontend" | "vnc" | "terminal";
+type GridViewMode = "conversation" | "frontend" | "vnc" | "terminal";
 
 const WorkspaceSelector: FC = () => {
   const { workspacePath, setWorkspacePath } = useWorkspacePath();
@@ -321,11 +321,11 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
   // Determine global toggle state based on individual task modes
   const getGlobalState = (): GridViewMode | "mixed" => {
     const modes = tasks.map((t) => taskViewModes[t.id] ?? "terminal");
-    const allLogs = modes.every((m) => m === "logs");
+    const allConversation = modes.every((m) => m === "conversation");
     const allFrontend = modes.every((m) => m === "frontend");
     const allVnc = modes.every((m) => m === "vnc");
     const allTerminal = modes.every((m) => m === "terminal");
-    if (allLogs) return "logs";
+    if (allConversation) return "conversation";
     if (allFrontend) return "frontend";
     if (allVnc) return "vnc";
     if (allTerminal) return "terminal";
@@ -416,9 +416,9 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
             </button>
             <button
               type="button"
-              onClick={() => setAllTasksViewMode("logs")}
+              onClick={() => setAllTasksViewMode("conversation")}
               className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
-                globalState === "logs"
+                globalState === "conversation"
                   ? "bg-primary text-primary-foreground"
                   : "hover:bg-muted"
               }`}
@@ -515,7 +515,7 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
             key={task.id}
             task={task}
             isGridView={!isDetailView}
-            viewMode={taskViewModes[task.id] ?? "logs"}
+            viewMode={taskViewModes[task.id] ?? "terminal"}
             onViewModeChange={(mode) => setTaskViewMode(task.id, mode)}
             showToolsOverlay={showToolsOverlay}
             isSelected={selectedTaskIds.includes(task.id)}
