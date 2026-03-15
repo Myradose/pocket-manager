@@ -1,12 +1,12 @@
 import { Trans } from "@lingui/react";
 import {
+  CheckCircle2,
   ChevronDown,
-  Lightbulb,
-  Wrench,
-  ListTodo,
   Circle,
   CircleDot,
-  CheckCircle2,
+  Lightbulb,
+  ListTodo,
+  Wrench,
 } from "lucide-react";
 import type { FC } from "react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
@@ -58,8 +58,8 @@ const TodoWriteDisplay: FC<{ input: unknown }> = ({ input }) => {
           <span className="text-sm font-medium">Tasks</span>
         </div>
         <div className="space-y-1">
-          {todos.map((todo, i) => (
-            <div key={i} className="flex items-start gap-2 text-sm">
+          {todos.map((todo) => (
+            <div key={todo.content} className="flex items-start gap-2 text-sm">
               {todo.status === "pending" && (
                 <Circle className="h-4 w-4 text-gray-400 flex-shrink-0 mt-0.5" />
               )}
