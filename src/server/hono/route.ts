@@ -730,6 +730,14 @@ export const routes = (app: HonoAppType, options: CliOptions) =>
           return response;
         })
 
+        .post("/api/tsk/tasks/:taskId/stop", async (c) => {
+          const response = await effectToResponse(
+            c,
+            tskController.stopTask({ ...c.req.param() }),
+          );
+          return response;
+        })
+
         /**
          * TerminalController Routes
          */

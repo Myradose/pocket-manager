@@ -32,7 +32,11 @@ import {
 } from "@/components/ui/dialog";
 import { ConversationList } from "../projects/[projectId]/sessions/[sessionId]/components/conversationList/ConversationList";
 import type { TskTask } from "./queries";
-import { tskTranscriptQuery, useDeleteTskTask } from "./queries";
+import {
+  tskTranscriptQuery,
+  useDeleteTskTask,
+  useStopTskTask,
+} from "./queries";
 import { TerminalPanel } from "./terminal/TerminalPanel";
 
 type GridViewMode = "logs" | "frontend" | "vnc" | "terminal";
@@ -142,19 +146,25 @@ export const TskPane: FC<TskPaneProps> = ({
   onAutoScrollChange,
 }) => {
   const deleteTask = useDeleteTskTask();
+  const stopTask = useStopTskTask();
   const navigate = useNavigate();
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [showStopDialog, setShowStopDialog] = useState(false);
 
-  const [isDeleting, setIsDeleting] = useState(false);
+  const isActiveTask = task.status === "RUNNING" || task.status === "SERVING";
+  const isTransitioning =
+    task.status === "STOPPING" || task.status === "DELETING";
 
-  const handleDeleteConfirm = useCallback(() => {
-    setShowDeleteDialog(false);
-    setIsDeleting(true);
-    if (!isGridView) {
-      navigate({ to: "/tsk", search: {} });
+  const handleStopConfirm = useCallback(() => {
+    setShowStopDialog(false);
+    if (isActiveTask) {
+      stopTask.mutate(task.id);
+    } else {
+      deleteTask.mutate(task.id);
+      if (!isGridView) {
+        navigate({ to: "/tsk", search: {} });
+      }
     }
-    deleteTask.mutate(task.id);
-  }, [task.id, isGridView, deleteTask, navigate]);
+  }, [task.id, isActiveTask, isGridView, stopTask, deleteTask, navigate]);
 
   // Track if split mode is active (detail view only feature)
   const [isSplitMode, setIsSplitMode] = useState(false);
@@ -286,6 +296,9 @@ export const TskPane: FC<TskPaneProps> = ({
       COMPLETE: "bg-blue-500",
       FAILED: "bg-red-500",
       QUEUED: "bg-gray-500",
+      STOPPING: "bg-orange-500",
+      DELETING: "bg-orange-500",
+      STOPPED: "bg-gray-400",
     }[task.status] ?? "bg-gray-500";
 
   // Determine effective view mode
@@ -350,15 +363,13 @@ export const TskPane: FC<TskPaneProps> = ({
           <span className="text-xs text-muted-foreground">({task.id})</span>
         </div>
         <div className="flex items-center gap-1">
-          {(task.status === "QUEUED" ||
-            task.status === "RUNNING" ||
-            task.status === "SERVING") && (
+          {(isActiveTask || task.status === "QUEUED") && !isTransitioning && (
             <button
               type="button"
-              onClick={() => setShowDeleteDialog(true)}
-              disabled={deleteTask.isPending}
+              onClick={() => setShowStopDialog(true)}
+              disabled={stopTask.isPending || deleteTask.isPending}
               className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"
-              title="Cancel/delete task"
+              title={isActiveTask ? "Stop task" : "Delete task"}
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -515,7 +526,9 @@ export const TskPane: FC<TskPaneProps> = ({
                     ? "text-red-500"
                     : task.status === "COMPLETE"
                       ? "text-blue-500"
-                      : ""
+                      : task.status === "STOPPING" || task.status === "DELETING"
+                        ? "text-orange-500"
+                        : ""
               }
             >
               {task.status}
@@ -649,40 +662,48 @@ export const TskPane: FC<TskPaneProps> = ({
         )}
       </div>
 
-      {/* Deleting overlay */}
-      {isDeleting && (
+      {/* Transitional status overlay */}
+      {isTransitioning && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/80 backdrop-blur-sm rounded-lg">
           <div className="flex items-center gap-2 text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" />
-            <span className="text-sm">Deleting task...</span>
+            <span className="text-sm">
+              {task.status === "STOPPING"
+                ? "Stopping task..."
+                : "Deleting task..."}
+            </span>
           </div>
         </div>
       )}
 
-      <Dialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      <Dialog open={showStopDialog} onOpenChange={setShowStopDialog}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>Delete Task</DialogTitle>
+            <DialogTitle>
+              {isActiveTask ? "Stop Task" : "Delete Task"}
+            </DialogTitle>
             <DialogDescription>
-              Are you sure you want to delete{" "}
+              Are you sure you want to {isActiveTask ? "stop" : "delete"}{" "}
               <span className="font-medium text-foreground">{task.name}</span>?
-              This will stop the container and remove the task.
+              {isActiveTask
+                ? " This will stop the container and archive the task."
+                : " This will remove the task."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <button
               type="button"
-              onClick={() => setShowDeleteDialog(false)}
+              onClick={() => setShowStopDialog(false)}
               className="px-4 py-2 rounded text-sm hover:bg-muted"
             >
               Cancel
             </button>
             <button
               type="button"
-              onClick={handleDeleteConfirm}
+              onClick={handleStopConfirm}
               className="px-4 py-2 rounded text-sm bg-red-600 text-white hover:bg-red-700"
             >
-              Delete
+              {isActiveTask ? "Stop" : "Delete"}
             </button>
           </DialogFooter>
         </DialogContent>

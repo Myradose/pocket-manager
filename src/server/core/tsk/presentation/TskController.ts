@@ -57,11 +57,27 @@ const LayerImpl = Effect.gen(function* () {
       } as const satisfies ControllerResponse;
     });
 
+  const stopTask = (options: { taskId: string }) =>
+    Effect.gen(function* () {
+      const result = yield* Effect.either(tskService.stopTask(options.taskId));
+      if (Either.isLeft(result)) {
+        return {
+          status: 500,
+          response: { error: result.left.message },
+        } as const satisfies ControllerResponse;
+      }
+      return {
+        status: 200,
+        response: result.right,
+      } as const satisfies ControllerResponse;
+    });
+
   return {
     listTasks,
     getTaskTranscript,
     createTask,
     deleteTask,
+    stopTask,
   };
 });
 

@@ -300,11 +300,32 @@ const LayerImpl = Effect.gen(function* () {
         }),
     });
 
+  const stopTask = (taskId: string) =>
+    Effect.tryPromise({
+      try: async () => {
+        const port = await Effect.runPromise(getTskApiPort());
+        const response = await fetch(
+          `http://localhost:${port}/tasks/${taskId}/stop`,
+          { method: "POST" },
+        );
+        if (!response.ok) {
+          throw new Error(`tsk API returned ${response.status}`);
+        }
+        return { success: true };
+      },
+      catch: (error) =>
+        new TskApiError({
+          message:
+            error instanceof Error ? error.message : "Failed to stop task",
+        }),
+    });
+
   return {
     listTasks,
     getTaskTranscript,
     createTask,
     deleteTask,
+    stopTask,
     generateServeHostname,
     enrichTask,
   };

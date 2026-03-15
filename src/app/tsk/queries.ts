@@ -84,3 +84,21 @@ export const useDeleteTskTask = () => {
     },
   });
 };
+
+export const useStopTskTask = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (taskId: string) => {
+      const response = await honoClient.api.tsk.tasks[":taskId"].stop.$post({
+        param: { taskId },
+      });
+      if (!response.ok) {
+        throw new Error(`Failed to stop task: ${response.statusText}`);
+      }
+      return await response.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["tsk", "tasks"] });
+    },
+  });
+};
