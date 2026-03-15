@@ -49,6 +49,7 @@ const mockTerminalSessionServiceLayer = Layer.mock(TerminalSessionService, {
         id: "session-123",
         taskId: "task1",
         containerId: "abc123container",
+        label: undefined,
         createdAt: "2026-01-01T00:00:00Z",
       },
     ]),

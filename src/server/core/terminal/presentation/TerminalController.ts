@@ -12,9 +12,10 @@ const LayerImpl = Effect.gen(function* () {
     taskId: string;
     cols?: number;
     rows?: number;
+    label?: string;
   }) =>
     Effect.gen(function* () {
-      const { taskId, cols, rows } = options;
+      const { taskId, cols, rows, label } = options;
 
       // Look up the task to get its container_id
       const tasks = yield* tskService.listTasks();
@@ -40,6 +41,7 @@ const LayerImpl = Effect.gen(function* () {
           task.container_id,
           cols,
           rows,
+          label,
         ),
       );
 

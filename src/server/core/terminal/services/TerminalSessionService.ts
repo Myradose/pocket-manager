@@ -6,6 +6,7 @@ export type TerminalSession = {
   id: string;
   taskId: string;
   containerId: string;
+  label?: string;
   createdAt: Date;
   lastActivity: Date;
   // biome-ignore lint/suspicious/noExplicitAny: node-pty IPty type is complex native type
@@ -23,6 +24,7 @@ const LayerImpl = Effect.gen(function* () {
     containerId: string,
     cols?: number,
     rows?: number,
+    label?: string,
   ) =>
     Effect.tryPromise({
       try: async () => {
@@ -60,6 +62,7 @@ const LayerImpl = Effect.gen(function* () {
           id: sessionId,
           taskId,
           containerId,
+          label,
           createdAt: now,
           lastActivity: now,
           pty: ptyProcess,
@@ -103,6 +106,7 @@ const LayerImpl = Effect.gen(function* () {
         id: s.id,
         taskId: s.taskId,
         containerId: s.containerId,
+        label: s.label,
         createdAt: s.createdAt.toISOString(),
       })),
     );

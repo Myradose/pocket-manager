@@ -1,4 +1,4 @@
-import { Plus, SquareTerminal, X } from "lucide-react";
+import { Plus, RotateCw, SquareTerminal, X } from "lucide-react";
 import { type FC, useCallback, useEffect, useRef, useState } from "react";
 import { honoClient } from "../../../lib/api/client";
 import { XTerminal } from "./XTerminal";
@@ -8,6 +8,9 @@ type Tab = {
   id: string;
   sessionId: string | null;
   name: string;
+  closable: boolean;
+  /** Command to auto-run when a new session is created for this tab. */
+  autoCommand?: string;
 };
 
 type TerminalPanelProps = {
@@ -37,16 +40,26 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
             id: string;
             taskId: string;
             containerId: string;
+            label?: string;
             createdAt: string;
           }>;
           const existing = sessions.filter((s) => s.taskId === taskId);
           if (existing.length > 0) {
-            const recoveredTabs = existing.map((s, i) => ({
-              id: s.id,
-              sessionId: s.id,
-              name: `Shell ${i + 1}`,
-            }));
-            nextTabNumber.current = existing.length + 1;
+            let shellNum = 0;
+            const recoveredTabs = existing.map((s) => {
+              const isClaude = s.label === "Claude Code";
+              if (!isClaude) shellNum++;
+              return {
+                id: s.id,
+                sessionId: s.id,
+                name: isClaude ? "Claude Code" : `Shell ${shellNum}`,
+                closable: !isClaude,
+                autoCommand: isClaude ? "claude" : undefined,
+              };
+            });
+            // Sort so the Claude Code tab is always first
+            recoveredTabs.sort((a) => (a.closable ? 1 : -1));
+            nextTabNumber.current = shellNum + 1;
             setTabs(recoveredTabs);
             const first = recoveredTabs[0];
             if (first) setActiveTabId(first.id);
@@ -67,7 +80,12 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
     const tabNumber = nextTabNumber.current++;
     setTabs((prev) => [
       ...prev,
-      { id: tabId, sessionId: null, name: `Shell ${tabNumber}` },
+      {
+        id: tabId,
+        sessionId: null,
+        name: `Shell ${tabNumber}`,
+        closable: true,
+      },
     ]);
     setActiveTabId(tabId);
   }, []);
@@ -75,12 +93,12 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
   // Called by XTerminal after it measures exact cols/rows via FitAddon.
   // Creates the PTY session at those dimensions so tmux starts at the right size.
   const handleMeasured = useCallback(
-    async (tabId: string, cols: number, rows: number) => {
+    async (tabId: string, cols: number, rows: number, label?: string) => {
       if (creatingSessions.current.has(tabId)) return;
       creatingSessions.current.add(tabId);
       try {
         const response = await honoClient.api.terminals.$post({
-          json: { taskId, cols, rows },
+          json: { taskId, cols, rows, label },
         });
         if (!response.ok) {
           creatingSessions.current.delete(tabId);
@@ -100,6 +118,7 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
   const closeTab = useCallback(
     async (tabId: string) => {
       const tab = tabs.find((t) => t.id === tabId);
+      if (tab && !tab.closable) return;
       if (tab?.sessionId) {
         try {
           await honoClient.api.terminals[":sessionId"].$delete({
@@ -121,11 +140,49 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
     [tabs, activeTabId],
   );
 
-  // When a session dies (PTY exited / container not ready), remove the tab
-  // and auto-create a replacement if it was the only one
+  // Kill the session and reset the tab so it remounts with a fresh PTY.
+  const restartTab = useCallback(
+    async (tabId: string) => {
+      const tab = tabs.find((t) => t.id === tabId);
+      if (tab?.sessionId) {
+        try {
+          await honoClient.api.terminals[":sessionId"].$delete({
+            param: { sessionId: tab.sessionId },
+          });
+        } catch {
+          // Ignore cleanup errors
+        }
+      }
+      const newId = crypto.randomUUID();
+      if (activeTabId === tabId) {
+        setActiveTabId(newId);
+      }
+      setTabs((prev) =>
+        prev.map((t) =>
+          t.id === tabId ? { ...t, id: newId, sessionId: null } : t,
+        ),
+      );
+    },
+    [tabs, activeTabId],
+  );
+
+  // When a session dies (PTY exited / container not ready):
+  // - Non-closable tabs: reset sessionId so they re-measure and re-create
+  // - Closable tabs: remove them
   const handleSessionDead = useCallback(
     (tabId: string) => {
       setTabs((prev) => {
+        const tab = prev.find((t) => t.id === tabId);
+        if (tab && !tab.closable) {
+          // Reset the non-closable tab — give it a new id so XTerminal remounts
+          const newId = crypto.randomUUID();
+          if (activeTabId === tabId) {
+            setActiveTabId(newId);
+          }
+          return prev.map((t) =>
+            t.id === tabId ? { ...t, id: newId, sessionId: null } : t,
+          );
+        }
         const remaining = prev.filter((t) => t.id !== tabId);
         if (activeTabId === tabId) {
           const last = remaining[remaining.length - 1];
@@ -137,12 +194,28 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
     [activeTabId],
   );
 
-  // Auto-create first tab after initialization if no sessions were recovered
+  // Create the dedicated Claude Code tab.
+  const createClaudeTab = useCallback(() => {
+    const tabId = crypto.randomUUID();
+    setTabs((prev) => [
+      {
+        id: tabId,
+        sessionId: null,
+        name: "Claude Code",
+        closable: false,
+        autoCommand: "claude",
+      },
+      ...prev,
+    ]);
+    setActiveTabId(tabId);
+  }, []);
+
+  // Auto-create Claude Code tab after initialization if none exists
   useEffect(() => {
-    if (initialized && tabs.length === 0) {
-      createTab();
+    if (initialized && !tabs.some((t) => !t.closable)) {
+      createClaudeTab();
     }
-  }, [initialized, tabs.length, createTab]);
+  }, [initialized, tabs, createClaudeTab]);
 
   return (
     <div className="flex flex-col h-full">
@@ -162,17 +235,31 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
           >
             <SquareTerminal className="w-3.5 h-3.5 shrink-0 opacity-60" />
             <span>{tab.name}</span>
-            <button
-              type="button"
-              className="terminal-tab__close"
-              onClick={(e) => {
-                e.stopPropagation();
-                closeTab(tab.id);
-              }}
-              aria-label={`Close ${tab.name}`}
-            >
-              <X className="w-3 h-3" />
-            </button>
+            {tab.closable ? (
+              <button
+                type="button"
+                className="terminal-tab__close"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  closeTab(tab.id);
+                }}
+                aria-label={`Close ${tab.name}`}
+              >
+                <X className="w-3 h-3" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="terminal-tab__close"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  restartTab(tab.id);
+                }}
+                aria-label={`Restart ${tab.name}`}
+              >
+                <RotateCw className="w-3 h-3" />
+              </button>
+            )}
           </div>
         ))}
         <button
@@ -198,10 +285,11 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
               visible={visible && activeTabId === tab.id}
               onMeasured={
                 tab.sessionId === null
-                  ? (cols, rows) => handleMeasured(tab.id, cols, rows)
+                  ? (cols, rows) => handleMeasured(tab.id, cols, rows, tab.name)
                   : undefined
               }
               onSessionDead={() => handleSessionDead(tab.id)}
+              autoCommand={tab.autoCommand}
             />
           </div>
         ))}

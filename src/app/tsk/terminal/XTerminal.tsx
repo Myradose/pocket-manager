@@ -11,6 +11,8 @@ type XTerminalProps = {
   visible: boolean;
   onMeasured?: (cols: number, rows: number) => void;
   onSessionDead?: () => void;
+  /** Command to auto-run when a NEW session connects (not on recovery). */
+  autoCommand?: string;
 };
 
 export const XTerminal: FC<XTerminalProps> = ({
@@ -18,6 +20,7 @@ export const XTerminal: FC<XTerminalProps> = ({
   visible,
   onMeasured,
   onSessionDead,
+  autoCommand,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const fitAddonRef = useRef<FitAddon | null>(null);
@@ -27,6 +30,9 @@ export const XTerminal: FC<XTerminalProps> = ({
   const onMeasuredRef = useRef(onMeasured);
   onSessionDeadRef.current = onSessionDead;
   onMeasuredRef.current = onMeasured;
+  // Track whether this is a freshly created session (sessionId went from null → non-null)
+  // vs a recovered session (sessionId was non-null on mount). Only fresh sessions get autoCommand.
+  const isNewSessionRef = useRef(sessionId === null);
 
   // Phase 1: Create terminal, measure exact dimensions.
   // Runs once on mount — independent of sessionId.
@@ -179,6 +185,7 @@ export const XTerminal: FC<XTerminalProps> = ({
     };
 
     let revealScheduled = false;
+    let autoCommandSent = false;
     ws.onmessage = (event) => {
       terminal.write(
         typeof event.data === "string" ? event.data : String(event.data),
@@ -196,6 +203,15 @@ export const XTerminal: FC<XTerminalProps> = ({
           container.classList.add("terminal-container--visible");
         });
       }
+      // Send autoCommand once after first data for newly created sessions.
+      if (autoCommand && isNewSessionRef.current && !autoCommandSent) {
+        autoCommandSent = true;
+        setTimeout(() => {
+          if (!cancelled && ws.readyState === WebSocket.OPEN) {
+            ws.send(`${autoCommand}\n`);
+          }
+        }, 300);
+      }
     };
 
     ws.onclose = () => {
@@ -210,7 +226,7 @@ export const XTerminal: FC<XTerminalProps> = ({
       container.classList.remove("terminal-container--visible");
       ws.close();
     };
-  }, [sessionId]);
+  }, [sessionId, autoCommand]);
 
   // Re-fit when becoming visible (e.g. switching tabs).
   useEffect(() => {
