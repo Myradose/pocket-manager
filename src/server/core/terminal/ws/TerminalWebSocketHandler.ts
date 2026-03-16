@@ -78,6 +78,19 @@ export const handleTerminalWebSocket = (
           close: () => ws.close(1000, "Replaced by new client"),
         };
 
+        // Force tmux to redraw so the new client gets the full screen
+        // contents. A resize with unchanged dimensions is a no-op in
+        // tmux, so we use refresh-client instead.
+        import("node:child_process").then(({ execSync }) => {
+          try {
+            execSync(`docker exec ${containerId} tmux refresh-client`, {
+              timeout: 3000,
+            });
+          } catch {
+            // ignore — container may not be reachable
+          }
+        });
+
         attachment.pty.onExit(() => {
           try {
             ws.close(1000, "PTY exited");

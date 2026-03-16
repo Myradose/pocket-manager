@@ -13,6 +13,12 @@ type XTerminalProps = {
   autoCommand?: string;
 };
 
+const sendResize = (ws: WebSocket, cols: number, rows: number) => {
+  if (ws.readyState === WebSocket.OPEN) {
+    ws.send(`\x00${JSON.stringify({ type: "resize", cols, rows })}`);
+  }
+};
+
 export const XTerminal: FC<XTerminalProps> = ({
   taskId,
   tmuxSessionName,
@@ -99,12 +105,11 @@ export const XTerminal: FC<XTerminalProps> = ({
     }
 
     // Auto-copy to clipboard on selection (Shift+drag to select).
-    // This avoids the need for Shift+right-click or keyboard shortcuts.
     terminal.onSelectionChange(() => {
       const selection = terminal.getSelection();
       if (selection) {
         navigator.clipboard.writeText(selection).catch(() => {
-          // Clipboard access denied — user can still Shift+right-click
+          // Clipboard access denied
         });
       }
     });
@@ -125,11 +130,7 @@ export const XTerminal: FC<XTerminalProps> = ({
       try {
         fitAddon.fit();
         const ws = wsRef.current;
-        if (ws?.readyState === WebSocket.OPEN) {
-          ws.send(
-            `\x00${JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows })}`,
-          );
-        }
+        if (ws) sendResize(ws, terminal.cols, terminal.rows);
       } catch {
         // Ignore resize errors during cleanup
       }
@@ -217,29 +218,10 @@ export const XTerminal: FC<XTerminalProps> = ({
             // ignore fit errors
           }
           container.classList.add("terminal-container--visible");
+          if (visibleRef.current) {
+            sendResize(ws, terminal.cols, terminal.rows);
+          }
         });
-
-        // Only send resize when visible to avoid tmux size conflicts
-        if (visibleRef.current) {
-          // Send exact dimensions
-          ws.send(
-            `\x00${JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows })}`,
-          );
-
-          // Bounce resize to force tmux redraw on reconnect
-          setTimeout(() => {
-            if (cancelled || ws.readyState !== WebSocket.OPEN) return;
-            ws.send(
-              `\x00${JSON.stringify({ type: "resize", cols: Math.max(1, terminal.cols - 1), rows: terminal.rows })}`,
-            );
-            setTimeout(() => {
-              if (cancelled || ws.readyState !== WebSocket.OPEN) return;
-              ws.send(
-                `\x00${JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows })}`,
-              );
-            }, 100);
-          }, 500);
-        }
       };
 
       let autoCommandSent = false;
@@ -314,10 +296,7 @@ export const XTerminal: FC<XTerminalProps> = ({
     };
   }, [taskId, tmuxSessionName, autoCommand, reconnectKey]);
 
-  // Re-fit when becoming visible (e.g. switching tabs, split pane).
-  // Double rAF ensures the browser has fully laid out the container
-  // before measuring dimensions — needed when emerging from display:none.
-  // Then bounce resize to force tmux to redraw at the correct size.
+  // Re-fit and sync dimensions when becoming visible (e.g. switching tabs).
   useEffect(() => {
     if (visible && fitAddonRef.current && terminalRef.current) {
       requestAnimationFrame(() => {
@@ -325,17 +304,8 @@ export const XTerminal: FC<XTerminalProps> = ({
           fitAddonRef.current?.fit();
           const ws = wsRef.current;
           const terminal = terminalRef.current;
-          if (ws?.readyState === WebSocket.OPEN && terminal) {
-            ws.send(
-              `\x00${JSON.stringify({ type: "resize", cols: Math.max(1, terminal.cols - 1), rows: terminal.rows })}`,
-            );
-            setTimeout(() => {
-              if (ws.readyState === WebSocket.OPEN) {
-                ws.send(
-                  `\x00${JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows })}`,
-                );
-              }
-            }, 100);
+          if (ws && terminal) {
+            sendResize(ws, terminal.cols, terminal.rows);
           }
         });
       });
