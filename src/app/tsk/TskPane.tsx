@@ -320,6 +320,9 @@ export const TskPane: FC<TskPaneProps> = ({
     }
   }, [controlledViewMode, externalMountedPanels, onPanelMount]);
 
+  const [panelGenerations, setPanelGenerations] = useState<
+    Record<string, number>
+  >({});
   const [showInfo, setShowInfo] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -415,7 +418,28 @@ export const TskPane: FC<TskPaneProps> = ({
     prevViewMode.current = effectiveViewMode;
   }, [effectiveViewMode, savedScrollPosition]);
 
+  // Jump to bottom handler
+  const scrollToBottom = () => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      setIsAtBottom(true);
+      setAutoScroll(true);
+    }
+  };
+
   const handleViewModeChange = (mode: GridViewMode) => {
+    if (mode === controlledViewMode && !isSplitMode) {
+      if (mode === "conversation") {
+        // Conversation is pure React state — just scroll to bottom as a refresh
+        scrollToBottom();
+      } else {
+        // Terminal/iframes need actual remount to reconnect WebSocket / reload
+        setPanelGenerations((prev) => ({
+          ...prev,
+          [mode]: (prev[mode] ?? 0) + 1,
+        }));
+      }
+    }
     setIsSplitMode(false); // Exit split mode when selecting a regular mode
     onViewModeChange?.(mode);
   };
@@ -510,15 +534,6 @@ export const TskPane: FC<TskPaneProps> = ({
       onScrollPositionChange?.(scrollTop);
     }
   }, [isAtBottom, onScrollPositionChange, setAutoScroll]);
-
-  // Jump to bottom handler
-  const scrollToBottom = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      setIsAtBottom(true);
-      setAutoScroll(true);
-    }
-  };
 
   const getToolResult = () => undefined; // Simplified for now
 
@@ -949,7 +964,11 @@ export const TskPane: FC<TskPaneProps> = ({
           );
           const isVisible = panelStyle.display !== "none";
           return (
-            <div key={svc.key} className="overflow-hidden" style={panelStyle}>
+            <div
+              key={`${svc.key}-${panelGenerations[svcMode] ?? 0}`}
+              className="overflow-hidden"
+              style={panelStyle}
+            >
               {isVnc ? (
                 <div className="relative h-full">
                   <iframe
@@ -973,6 +992,7 @@ export const TskPane: FC<TskPaneProps> = ({
         {/* Terminal — stays mounted, visibility controlled by prop */}
         {mountedPanels.has("terminal") && task.container_id && (
           <div
+            key={`terminal-${panelGenerations.terminal ?? 0}`}
             className="overflow-hidden"
             style={getPanelPositionStyle(
               "terminal",
