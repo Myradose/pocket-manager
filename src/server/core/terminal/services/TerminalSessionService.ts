@@ -47,6 +47,20 @@ export type PtyAttachment = {
   };
 };
 
+const TMUX_CONFIG_COMMANDS = [
+  'tmux set -g default-terminal "tmux-256color"',
+  'tmux set -as terminal-features ",xterm*:RGB"',
+  "tmux set -g history-limit 10000",
+  "tmux set -g mouse on",
+  'tmux set -g mode-style "bg=#264f78,fg=#cccccc"',
+  "tmux unbind -n MouseDown3Pane",
+  "tmux unbind -n M-MouseDown3Pane",
+  'tmux bind -Tcopy-mode WheelUpPane select-pane "\\;" send -N1 -X scroll-up',
+  'tmux bind -Tcopy-mode WheelDownPane select-pane "\\;" send -N1 -X scroll-down',
+  'tmux bind -Tcopy-mode-vi WheelUpPane select-pane "\\;" send -N1 -X scroll-up',
+  'tmux bind -Tcopy-mode-vi WheelDownPane select-pane "\\;" send -N1 -X scroll-down',
+].join(" && ");
+
 const SAFE_NAME = /^[a-zA-Z0-9_-]+$/;
 
 const assertSafeName = (name: string) => {
@@ -60,6 +74,22 @@ const ptyAttachmentKey = (containerId: string, tmuxName: string) =>
 
 const LayerImpl = Effect.gen(function* () {
   const attachments = new Map<string, PtyAttachment>();
+  const configuredContainers = new Set<string>();
+
+  const applyTmuxConfig = (containerId: string) =>
+    Effect.tryPromise({
+      try: async () => {
+        const { execSync } = await import("node:child_process");
+        execSync(`docker exec ${containerId} sh -c '${TMUX_CONFIG_COMMANDS}'`, {
+          timeout: 10000,
+        });
+        configuredContainers.add(containerId);
+      },
+      catch: (error) =>
+        new Error(
+          `Failed to apply tmux config: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+    });
 
   const killAttachment = (attachment: PtyAttachment) => {
     if (attachment.cleanupTimer) clearTimeout(attachment.cleanupTimer);
@@ -93,27 +123,37 @@ const LayerImpl = Effect.gen(function* () {
     cols?: number,
     rows?: number,
   ) =>
-    Effect.tryPromise({
-      try: async () => {
-        assertSafeName(name);
-        const { execSync } = await import("node:child_process");
-        try {
-          execSync(`docker exec ${containerId} tmux has-session -t ${name}`, {
-            timeout: 5000,
-          });
-          return { name, created: false };
-        } catch {
-          const width = cols ?? 80;
-          const height = rows ?? 24;
-          execSync(
-            `docker exec ${containerId} tmux new-session -d -s ${name} -x ${width} -y ${height}`,
-            { timeout: 5000 },
-          );
-          return { name, created: true };
-        }
-      },
-      catch: (error) =>
-        new Error(error instanceof Error ? error.message : String(error)),
+    Effect.gen(function* () {
+      const result = yield* Effect.tryPromise({
+        try: async () => {
+          assertSafeName(name);
+          const { execSync } = await import("node:child_process");
+          try {
+            execSync(`docker exec ${containerId} tmux has-session -t ${name}`, {
+              timeout: 5000,
+            });
+            return { name, created: false };
+          } catch {
+            const width = cols ?? 80;
+            const height = rows ?? 24;
+            execSync(
+              `docker exec ${containerId} tmux new-session -d -s ${name} -x ${width} -y ${height}`,
+              { timeout: 5000 },
+            );
+            return { name, created: true };
+          }
+        },
+        catch: (error) =>
+          new Error(error instanceof Error ? error.message : String(error)),
+      });
+
+      if (!configuredContainers.has(containerId)) {
+        yield* applyTmuxConfig(containerId).pipe(
+          Effect.catchAll(() => Effect.void),
+        );
+      }
+
+      return result;
     });
 
   const destroyTmuxSession = (containerId: string, name: string) =>
