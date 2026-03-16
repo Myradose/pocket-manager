@@ -285,11 +285,26 @@ export const XTerminal: FC<XTerminalProps> = ({
   // Re-fit when becoming visible (e.g. switching tabs, split pane).
   // Double rAF ensures the browser has fully laid out the container
   // before measuring dimensions — needed when emerging from display:none.
+  // Then bounce resize to force tmux to redraw at the correct size.
   useEffect(() => {
-    if (visible && fitAddonRef.current) {
+    if (visible && fitAddonRef.current && terminalRef.current) {
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           fitAddonRef.current?.fit();
+          const ws = wsRef.current;
+          const terminal = terminalRef.current;
+          if (ws?.readyState === WebSocket.OPEN && terminal) {
+            ws.send(
+              `\x00${JSON.stringify({ type: "resize", cols: Math.max(1, terminal.cols - 1), rows: terminal.rows })}`,
+            );
+            setTimeout(() => {
+              if (ws.readyState === WebSocket.OPEN) {
+                ws.send(
+                  `\x00${JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows })}`,
+                );
+              }
+            }, 100);
+          }
         });
       });
     }
