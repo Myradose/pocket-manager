@@ -5,7 +5,7 @@ import type { TerminalSessionService } from "../services/TerminalSessionService"
 
 const GRACE_PERIOD_MS = 60_000; // 60 seconds for page refresh
 
-let nextListenerId = 0;
+let nextClientId = 0;
 
 export const handleTerminalWebSocket = (
   taskId: string,
@@ -13,13 +13,21 @@ export const handleTerminalWebSocket = (
   terminalSessionService: TerminalSessionService["Type"],
   tskService: TskService["Type"],
 ) => {
-  // Each WebSocket connection gets a unique listener ID
-  const listenerId = `ws-${nextListenerId++}`;
+  const clientId = nextClientId++;
+
+  const resolveAttachment = Effect.gen(function* () {
+    const tasks = yield* tskService.listTasks();
+    const task = tasks.find((t) => t.id === taskId);
+    if (!task?.container_id) return null;
+    return yield* terminalSessionService.getPtyAttachment(
+      task.container_id,
+      tmuxSessionName,
+    );
+  });
 
   return {
     onOpen: (_event: Event, ws: WSContext) => {
       const setup = Effect.gen(function* () {
-        // Resolve containerId from taskId
         const tasks = yield* tskService.listTasks();
         const task = tasks.find((t) => t.id === taskId);
         if (!task?.container_id) {
@@ -28,20 +36,17 @@ export const handleTerminalWebSocket = (
         }
         const containerId = task.container_id;
 
-        // Cancel any pending cleanup
         yield* terminalSessionService.cancelPtyCleanup(
           containerId,
           tmuxSessionName,
         );
 
-        // Get existing or create new PTY attachment
         let attachment = yield* terminalSessionService.getPtyAttachment(
           containerId,
           tmuxSessionName,
         );
 
         if (!attachment) {
-          // Create fresh PTY attachment
           const result = yield* Effect.either(
             terminalSessionService.attachPty(
               containerId,
@@ -56,14 +61,22 @@ export const handleTerminalWebSocket = (
           attachment = result.right;
         }
 
-        // Register this WebSocket as a data listener
-        attachment.dataListeners.set(listenerId, (data: string) => {
+        // Notify old client it's been displaced, then replace it.
+        // We don't close the old WebSocket — that would trigger
+        // the frontend's auto-reconnect loop.
+        if (attachment.activeClient) {
           try {
-            ws.send(data);
+            attachment.activeClient.send('\x00{"type":"displaced"}');
           } catch {
-            // WebSocket may be closed
+            // ignore
           }
-        });
+        }
+
+        attachment.activeClient = {
+          id: clientId,
+          send: (data: string) => ws.send(data),
+          close: () => ws.close(1000, "Replaced by new client"),
+        };
 
         attachment.pty.onExit(() => {
           try {
@@ -85,20 +98,15 @@ export const handleTerminalWebSocket = (
 
     onMessage: (event: MessageEvent, _ws: WSContext) => {
       const handleMessage = Effect.gen(function* () {
-        const tasks = yield* tskService.listTasks();
-        const task = tasks.find((t) => t.id === taskId);
-        if (!task?.container_id) return;
-
-        const attachment = yield* terminalSessionService.getPtyAttachment(
-          task.container_id,
-          tmuxSessionName,
-        );
+        const attachment = yield* resolveAttachment;
         if (!attachment) return;
+
+        // Only the active client can send input
+        if (attachment.activeClient?.id !== clientId) return;
 
         const data =
           typeof event.data === "string" ? event.data : String(event.data);
 
-        // Control message: starts with NUL byte
         if (data.startsWith("\x00")) {
           try {
             const control = JSON.parse(data.slice(1));
@@ -108,23 +116,6 @@ export const handleTerminalWebSocket = (
               typeof control.rows === "number"
             ) {
               attachment.pty.resize(control.cols, control.rows);
-              // Refresh copy-mode buffer after resize so reflowed
-              // content displays correctly (no-op if not in copy mode).
-              // Debounce: only fire after resizing stops.
-              if (attachment.refreshTimer)
-                clearTimeout(attachment.refreshTimer);
-              attachment.refreshTimer = setTimeout(async () => {
-                attachment.refreshTimer = undefined;
-                try {
-                  const { execSync } = await import("node:child_process");
-                  execSync(
-                    `docker exec ${attachment.containerId} tmux if -F '#{pane_in_mode}' 'send-keys -X refresh-from-pane' ''`,
-                    { timeout: 3000 },
-                  );
-                } catch {
-                  // ignore — tmux < 3.2 or not in copy mode
-                }
-              }, 300);
             }
           } catch {
             // Invalid control message, ignore
@@ -132,7 +123,6 @@ export const handleTerminalWebSocket = (
           return;
         }
 
-        // Regular terminal input
         attachment.pty.write(data);
       });
 
@@ -143,25 +133,19 @@ export const handleTerminalWebSocket = (
 
     onClose: () => {
       const cleanup = Effect.gen(function* () {
-        const tasks = yield* tskService.listTasks();
-        const task = tasks.find((t) => t.id === taskId);
-        if (!task?.container_id) return;
+        const attachment = yield* resolveAttachment;
+        if (!attachment) return;
 
-        const attachment = yield* terminalSessionService.getPtyAttachment(
-          task.container_id,
-          tmuxSessionName,
+        // Only clean up if we're still the active client —
+        // a newer client may have already replaced us.
+        if (attachment.activeClient?.id !== clientId) return;
+
+        attachment.activeClient = undefined;
+        yield* terminalSessionService.markPtyForCleanup(
+          attachment.containerId,
+          attachment.tmuxSessionName,
+          GRACE_PERIOD_MS,
         );
-        if (attachment) {
-          attachment.dataListeners.delete(listenerId);
-          // Only schedule PTY cleanup when no listeners remain
-          if (attachment.dataListeners.size === 0) {
-            yield* terminalSessionService.markPtyForCleanup(
-              task.container_id,
-              tmuxSessionName,
-              GRACE_PERIOD_MS,
-            );
-          }
-        }
       });
 
       Effect.runPromise(cleanup).catch(() => {
@@ -171,24 +155,17 @@ export const handleTerminalWebSocket = (
 
     onError: () => {
       const cleanup = Effect.gen(function* () {
-        const tasks = yield* tskService.listTasks();
-        const task = tasks.find((t) => t.id === taskId);
-        if (!task?.container_id) return;
+        const attachment = yield* resolveAttachment;
+        if (!attachment) return;
 
-        const attachment = yield* terminalSessionService.getPtyAttachment(
-          task.container_id,
-          tmuxSessionName,
+        if (attachment.activeClient?.id !== clientId) return;
+
+        attachment.activeClient = undefined;
+        yield* terminalSessionService.markPtyForCleanup(
+          attachment.containerId,
+          attachment.tmuxSessionName,
+          GRACE_PERIOD_MS,
         );
-        if (attachment) {
-          attachment.dataListeners.delete(listenerId);
-          if (attachment.dataListeners.size === 0) {
-            yield* terminalSessionService.markPtyForCleanup(
-              task.container_id,
-              tmuxSessionName,
-              GRACE_PERIOD_MS,
-            );
-          }
-        }
       });
 
       Effect.runPromise(cleanup).catch(() => {

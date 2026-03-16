@@ -3,7 +3,7 @@ import { Unicode11Addon } from "@xterm/addon-unicode11";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import { WebglAddon } from "@xterm/addon-webgl";
 import { Terminal } from "@xterm/xterm";
-import { type FC, useEffect, useRef } from "react";
+import { type FC, useEffect, useRef, useState } from "react";
 import "./terminal.css";
 
 type XTerminalProps = {
@@ -25,6 +25,9 @@ export const XTerminal: FC<XTerminalProps> = ({
   const wsRef = useRef<WebSocket | null>(null);
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
+  const [displaced, setDisplaced] = useState(false);
+  const displacedRef = useRef(false);
+  const [_reconnectKey, setReconnectKey] = useState(0);
 
   // Phase 1: Create terminal, measure exact dimensions.
   // Runs once on mount.
@@ -106,8 +109,9 @@ export const XTerminal: FC<XTerminalProps> = ({
       }
     });
 
-    // Forward terminal input to the WebSocket (if connected).
+    // Forward terminal input to the WebSocket (if connected and not displaced).
     terminal.onData((data) => {
+      if (displacedRef.current) return;
       const ws = wsRef.current;
       if (ws?.readyState === WebSocket.OPEN) {
         ws.send(data);
@@ -117,7 +121,7 @@ export const XTerminal: FC<XTerminalProps> = ({
     // Keep the terminal fitted and forward resize to the backend.
     // Only send resize when visible to avoid tmux size conflicts with other terminals.
     const resizeObserver = new ResizeObserver(() => {
-      if (!visibleRef.current) return;
+      if (!visibleRef.current || displacedRef.current) return;
       try {
         fitAddon.fit();
         const ws = wsRef.current;
@@ -238,9 +242,24 @@ export const XTerminal: FC<XTerminalProps> = ({
 
       let autoCommandSent = false;
       ws.onmessage = (event) => {
-        terminal.write(
-          typeof event.data === "string" ? event.data : String(event.data),
-        );
+        const raw =
+          typeof event.data === "string" ? event.data : String(event.data);
+
+        // Server control message (NUL-prefixed JSON)
+        if (raw.startsWith("\x00")) {
+          try {
+            const control = JSON.parse(raw.slice(1));
+            if (control.type === "displaced") {
+              displacedRef.current = true;
+              setDisplaced(true);
+            }
+          } catch {
+            // ignore malformed control messages
+          }
+          return;
+        }
+
+        terminal.write(raw);
 
         // Reveal on first data
         container.classList.add("terminal-container--visible");
@@ -257,7 +276,7 @@ export const XTerminal: FC<XTerminalProps> = ({
       };
 
       ws.onclose = () => {
-        if (!cancelled) {
+        if (!cancelled && !displacedRef.current) {
           wsRef.current = null;
           scheduleReconnect();
         }
@@ -321,12 +340,32 @@ export const XTerminal: FC<XTerminalProps> = ({
     }
   }, [visible]);
 
+  const handleTakeControl = () => {
+    displacedRef.current = false;
+    setDisplaced(false);
+    setReconnectKey((k) => k + 1);
+  };
+
   return (
     <>
       <div ref={containerRef} className="terminal-container" />
       <div className="terminal-loading">
         <span className="terminal-loading-cursor">▋</span>
       </div>
+      {displaced && (
+        <div className="terminal-displaced">
+          <div className="terminal-displaced__content">
+            <p>This terminal is active in another tab.</p>
+            <button
+              type="button"
+              className="terminal-displaced__button"
+              onClick={handleTakeControl}
+            >
+              Take Control
+            </button>
+          </div>
+        </div>
+      )}
     </>
   );
 };

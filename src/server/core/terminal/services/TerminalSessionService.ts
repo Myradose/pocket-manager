@@ -1,32 +1,69 @@
 import { Context, Effect, Layer } from "effect";
 import type { InferEffect } from "../../../lib/effect/types";
 
+// Bun.spawn terminal types (bun runtime only)
+interface BunTerminal {
+  write(data: string): void;
+  resize(cols: number, rows: number): void;
+  close(): void;
+}
+
+declare const Bun: {
+  spawn(
+    cmd: string[],
+    opts: {
+      terminal: {
+        cols?: number;
+        rows?: number;
+        name?: string;
+        data?: (terminal: BunTerminal, data: Uint8Array) => void;
+      };
+      env?: NodeJS.ProcessEnv;
+    },
+  ): {
+    pid: number;
+    terminal: BunTerminal;
+    kill(): void;
+    exited: Promise<number>;
+  };
+};
+
 export type PtyAttachment = {
   containerId: string;
   tmuxSessionName: string;
   taskId: string;
-  // biome-ignore lint/suspicious/noExplicitAny: node-pty IPty type is complex native type
-  pty: any;
+  pty: {
+    write(data: string): void;
+    resize(cols: number, rows: number): void;
+    kill(): void;
+    onExit(cb: () => void): void;
+  };
   cleanupTimer?: ReturnType<typeof setTimeout>;
-  refreshTimer?: ReturnType<typeof setTimeout>;
-  dataListenerDispose?: () => void;
-  /** Multiple WebSocket clients can listen to the same PTY */
-  dataListeners: Map<string, (data: string) => void>;
-  /** Dispose the single onData handler that fans out to all listeners */
-  masterListenerDispose?: () => void;
+  /** Active WebSocket client — only one at a time to avoid tmux size conflicts */
+  activeClient?: {
+    id: number;
+    send(data: string): void;
+    close(): void;
+  };
 };
 
 const ptyAttachmentKey = (containerId: string, tmuxName: string) =>
   `${containerId}:${tmuxName}`;
 
-const spawnPtyModule = async () => {
-  const { createRequire } = await import("node:module");
-  const ptyRequire = createRequire(import.meta.url);
-  return ptyRequire("node-pty");
-};
-
 const LayerImpl = Effect.gen(function* () {
   const attachments = new Map<string, PtyAttachment>();
+
+  const killAttachment = (attachment: PtyAttachment) => {
+    if (attachment.cleanupTimer) clearTimeout(attachment.cleanupTimer);
+    try {
+      attachment.pty.kill();
+    } catch {
+      // PTY may already be dead
+    }
+    attachments.delete(
+      ptyAttachmentKey(attachment.containerId, attachment.tmuxSessionName),
+    );
+  };
 
   const listTmuxSessions = (containerId: string) =>
     Effect.tryPromise({
@@ -57,7 +94,6 @@ const LayerImpl = Effect.gen(function* () {
           });
           return { name, created: false };
         } catch {
-          // Session doesn't exist, create it
           const width = cols ?? 80;
           const height = rows ?? 24;
           execSync(
@@ -76,17 +112,7 @@ const LayerImpl = Effect.gen(function* () {
       try: async () => {
         const key = ptyAttachmentKey(containerId, name);
         const existing = attachments.get(key);
-        if (existing) {
-          if (existing.cleanupTimer) clearTimeout(existing.cleanupTimer);
-          if (existing.masterListenerDispose) existing.masterListenerDispose();
-          if (existing.dataListenerDispose) existing.dataListenerDispose();
-          try {
-            existing.pty.kill();
-          } catch {
-            // PTY may already be dead
-          }
-          attachments.delete(key);
-        }
+        if (existing) killAttachment(existing);
         const { execSync } = await import("node:child_process");
         execSync(`docker exec ${containerId} tmux kill-session -t ${name}`, {
           timeout: 5000,
@@ -105,25 +131,14 @@ const LayerImpl = Effect.gen(function* () {
     Effect.tryPromise({
       try: async () => {
         const key = ptyAttachmentKey(containerId, name);
-
-        // Kill existing PTY attachment for this session
         const existing = attachments.get(key);
-        if (existing) {
-          if (existing.cleanupTimer) clearTimeout(existing.cleanupTimer);
-          if (existing.masterListenerDispose) existing.masterListenerDispose();
-          if (existing.dataListenerDispose) existing.dataListenerDispose();
-          try {
-            existing.pty.kill();
-          } catch {
-            // PTY may already be dead
-          }
-          attachments.delete(key);
-        }
+        if (existing) killAttachment(existing);
 
-        const pty = await spawnPtyModule();
-        const ptyProcess = pty.spawn(
-          "docker",
+        const exitCallbacks: Array<() => void> = [];
+
+        const proc = Bun.spawn(
           [
+            "docker",
             "exec",
             "-it",
             "-e",
@@ -141,10 +156,22 @@ const LayerImpl = Effect.gen(function* () {
             name,
           ],
           {
-            name: "xterm-256color",
-            cols: cols ?? 80,
-            rows: rows ?? 24,
-            // biome-ignore lint/style/noProcessEnv: node-pty requires raw env for Docker exec
+            terminal: {
+              cols: cols ?? 80,
+              rows: rows ?? 24,
+              name: "xterm-256color",
+              data(_terminal, data) {
+                const a = attachments.get(key);
+                if (a?.activeClient) {
+                  try {
+                    a.activeClient.send(Buffer.from(data).toString());
+                  } catch {
+                    // client may be closed
+                  }
+                }
+              },
+            },
+            // biome-ignore lint/style/noProcessEnv: Bun.spawn requires raw env for Docker exec
             env: process.env,
           },
         );
@@ -153,22 +180,26 @@ const LayerImpl = Effect.gen(function* () {
           containerId,
           tmuxSessionName: name,
           taskId,
-          pty: ptyProcess,
-          dataListeners: new Map(),
+          pty: {
+            write: (data: string) => proc.terminal.write(data),
+            resize: (c: number, r: number) => proc.terminal.resize(c, r),
+            kill: () => proc.kill(),
+            onExit: (cb: () => void) => {
+              exitCallbacks.push(cb);
+            },
+          },
         };
-
-        // Master onData listener that fans out to all registered listeners
-        const masterDisposable = ptyProcess.onData((data: string) => {
-          for (const listener of attachment.dataListeners.values()) {
-            listener(data);
-          }
-        });
-        attachment.masterListenerDispose = () => masterDisposable.dispose();
 
         attachments.set(key, attachment);
 
-        // Auto-cleanup when PTY exits
-        ptyProcess.onExit(() => {
+        proc.exited.then(() => {
+          for (const cb of exitCallbacks) {
+            try {
+              cb();
+            } catch {
+              // ignore
+            }
+          }
           attachments.delete(key);
         });
 
@@ -186,19 +217,8 @@ const LayerImpl = Effect.gen(function* () {
   const detachPty = (containerId: string, name: string) =>
     Effect.sync(() => {
       const key = ptyAttachmentKey(containerId, name);
-      const attachment = attachments.get(key);
-      if (attachment) {
-        if (attachment.cleanupTimer) clearTimeout(attachment.cleanupTimer);
-        if (attachment.masterListenerDispose)
-          attachment.masterListenerDispose();
-        if (attachment.dataListenerDispose) attachment.dataListenerDispose();
-        try {
-          attachment.pty.kill();
-        } catch {
-          // PTY may already be dead
-        }
-        attachments.delete(key);
-      }
+      const existing = attachments.get(key);
+      if (existing) killAttachment(existing);
     });
 
   const markPtyForCleanup = (
@@ -211,17 +231,10 @@ const LayerImpl = Effect.gen(function* () {
       const attachment = attachments.get(key);
       if (attachment) {
         if (attachment.cleanupTimer) clearTimeout(attachment.cleanupTimer);
-        attachment.cleanupTimer = setTimeout(() => {
-          if (attachment.masterListenerDispose)
-            attachment.masterListenerDispose();
-          if (attachment.dataListenerDispose) attachment.dataListenerDispose();
-          try {
-            attachment.pty.kill();
-          } catch {
-            // PTY may already be dead
-          }
-          attachments.delete(key);
-        }, delayMs);
+        attachment.cleanupTimer = setTimeout(
+          () => killAttachment(attachment),
+          delayMs,
+        );
       }
     });
 

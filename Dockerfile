@@ -33,4 +33,4 @@ COPY --from=builder /app/scripts/docker-entrypoint.sh ./scripts/docker-entrypoin
 COPY package.json bun.lock ./
 EXPOSE 3400
 ENTRYPOINT ["./scripts/docker-entrypoint.sh"]
-CMD ["node", "dist/main.js"]
+CMD ["bun", "dist/main.js"]
