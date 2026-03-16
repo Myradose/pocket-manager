@@ -101,7 +101,7 @@ export const XTerminal: FC<XTerminalProps> = ({
     // PgUp enters copy-mode and scrolls up, PgDn scrolls down and exits
     // copy-mode at the bottom.
     let wheelAccumulator = 0;
-    const SCROLL_THRESHOLD = 75;
+    const SCROLL_THRESHOLD = 35;
     terminal.attachCustomWheelEventHandler((ev: WheelEvent) => {
       if (ev.deltaY === 0) return true;
       const ws = wsRef.current;
