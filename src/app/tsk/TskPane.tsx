@@ -901,109 +901,210 @@ export const TskPane: FC<TskPaneProps> = ({
 
       {/* Content */}
       <div
-        className="flex-1 overflow-hidden"
+        className="flex-1 overflow-hidden relative"
         style={
           viewMode === "terminal"
             ? { background: "#0f1119", borderRadius: "0 0 8px 8px" }
             : undefined
         }
       >
-        {viewMode === "conversation" && (
-          <div className="relative h-full">
-            <div
-              ref={scrollRef}
-              onScroll={handleScroll}
-              className="h-full overflow-auto p-2"
-            >
-              {conversations.length > 0 ? (
-                <ConversationList
-                  conversations={conversations}
-                  getToolResult={getToolResult}
-                  projectId={task.id}
-                  sessionId={task.id}
-                  scheduledJobs={[]}
-                />
-              ) : (
-                <div className="flex items-center justify-center h-full">
-                  <p className="text-muted-foreground text-sm">
-                    Waiting for agent output...
-                  </p>
+        {isGridView ? (
+          /* Grid view: only mount the active panel */
+          <>
+            {viewMode === "conversation" && (
+              <div className="relative h-full">
+                <div
+                  ref={scrollRef}
+                  onScroll={handleScroll}
+                  className="h-full overflow-auto p-2"
+                >
+                  {conversations.length > 0 ? (
+                    <ConversationList
+                      conversations={conversations}
+                      getToolResult={getToolResult}
+                      projectId={task.id}
+                      sessionId={task.id}
+                      scheduledJobs={[]}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <p className="text-muted-foreground text-sm">
+                        Waiting for agent output...
+                      </p>
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
-            {/* Jump to bottom button */}
-            {conversations.length > 0 && (
-              <button
-                type="button"
-                onClick={scrollToBottom}
-                className={`absolute bottom-4 right-8 p-2 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 z-10 transition-all duration-200 ${
-                  isAtBottom
-                    ? "opacity-0 pointer-events-none scale-90"
-                    : "opacity-100 scale-100"
-                }`}
-                title="Scroll to bottom"
-              >
-                <ArrowDown className="w-4 h-4" />
-              </button>
+                {conversations.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={scrollToBottom}
+                    className={`absolute bottom-4 right-8 p-2 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 z-10 transition-all duration-200 ${
+                      isAtBottom
+                        ? "opacity-0 pointer-events-none scale-90"
+                        : "opacity-100 scale-100"
+                    }`}
+                    title="Scroll to bottom"
+                  >
+                    <ArrowDown className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
             )}
-          </div>
-        )}
 
-        {typeof viewMode === "string" &&
-          viewMode.startsWith("service:") &&
-          (() => {
-            const key = viewMode.slice(8);
-            const svc = task.services.find((s) => s.key === key);
-            const cfg = displayConfig[key];
-            if (!svc) return null;
-            if (cfg?.embedType === "vnc") {
-              return (
-                <div className="relative h-full">
+            {typeof viewMode === "string" &&
+              viewMode.startsWith("service:") &&
+              (() => {
+                const key = viewMode.slice(8);
+                const svc = task.services.find((s) => s.key === key);
+                const cfg = displayConfig[key];
+                if (!svc) return null;
+                if (cfg?.embedType === "vnc") {
+                  return (
+                    <div className="relative h-full">
+                      <iframe
+                        src={svc.url}
+                        className="w-full h-full border-0"
+                        title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
+                      />
+                      <ToolCallsOverlay />
+                    </div>
+                  );
+                }
+                return (
                   <iframe
                     src={svc.url}
-                    className="w-full h-full border-0"
+                    className="w-full h-full border-0 bg-white"
                     title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
                   />
-                  <ToolCallsOverlay />
+                );
+              })()}
+
+            {viewMode === "terminal" && task.container_id && (
+              <TerminalPanel taskId={task.id} visible />
+            )}
+          </>
+        ) : (
+          /* Detail view: keep all panels mounted, show/hide via CSS */
+          <>
+            {/* Conversation */}
+            <div
+              className="absolute inset-0"
+              style={{
+                display: viewMode === "conversation" ? "block" : "none",
+              }}
+            >
+              <div className="relative h-full">
+                <div
+                  ref={scrollRef}
+                  onScroll={handleScroll}
+                  className="h-full overflow-auto p-2"
+                >
+                  {conversations.length > 0 ? (
+                    <ConversationList
+                      conversations={conversations}
+                      getToolResult={getToolResult}
+                      projectId={task.id}
+                      sessionId={task.id}
+                      scheduledJobs={[]}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full">
+                      <p className="text-muted-foreground text-sm">
+                        Waiting for agent output...
+                      </p>
+                    </div>
+                  )}
+                </div>
+                {conversations.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={scrollToBottom}
+                    className={`absolute bottom-4 right-8 p-2 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 z-10 transition-all duration-200 ${
+                      isAtBottom
+                        ? "opacity-0 pointer-events-none scale-90"
+                        : "opacity-100 scale-100"
+                    }`}
+                    title="Scroll to bottom"
+                  >
+                    <ArrowDown className="w-4 h-4" />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            {/* Service iframes — each stays mounted once loaded */}
+            {sortedServices.map((svc) => {
+              const cfg = displayConfig[svc.key];
+              const svcMode: GridViewMode = `service:${svc.key}`;
+              const isActive = viewMode === svcMode;
+              const isVnc = cfg?.embedType === "vnc";
+              return (
+                <div
+                  key={svc.key}
+                  className="absolute inset-0"
+                  style={{ display: isActive ? "block" : "none" }}
+                >
+                  {isVnc ? (
+                    <div className="relative h-full">
+                      <iframe
+                        src={svc.url}
+                        className="w-full h-full border-0"
+                        title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
+                      />
+                      {isActive && <ToolCallsOverlay />}
+                    </div>
+                  ) : (
+                    <iframe
+                      src={svc.url}
+                      className="w-full h-full border-0 bg-white"
+                      title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
+                    />
+                  )}
                 </div>
               );
-            }
-            return (
-              <iframe
-                src={svc.url}
-                className="w-full h-full border-0 bg-white"
-                title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
-              />
-            );
-          })()}
+            })}
 
-        {viewMode === "split" && (
-          <div className="grid grid-cols-2 h-full">
-            <SplitPane
-              mode={splitLeft}
-              onModeChange={setSplitLeft}
-              task={task}
-              conversations={conversations}
-              getToolResult={getToolResult}
-              ToolCallsOverlay={ToolCallsOverlay}
-              side="left"
-              displayConfig={displayConfig}
-            />
-            <SplitPane
-              mode={splitRight}
-              onModeChange={setSplitRight}
-              task={task}
-              conversations={conversations}
-              getToolResult={getToolResult}
-              ToolCallsOverlay={ToolCallsOverlay}
-              side="right"
-              displayConfig={displayConfig}
-            />
-          </div>
-        )}
+            {/* Split view */}
+            {viewMode === "split" && (
+              <div className="grid grid-cols-2 h-full">
+                <SplitPane
+                  mode={splitLeft}
+                  onModeChange={setSplitLeft}
+                  task={task}
+                  conversations={conversations}
+                  getToolResult={getToolResult}
+                  ToolCallsOverlay={ToolCallsOverlay}
+                  side="left"
+                  displayConfig={displayConfig}
+                />
+                <SplitPane
+                  mode={splitRight}
+                  onModeChange={setSplitRight}
+                  task={task}
+                  conversations={conversations}
+                  getToolResult={getToolResult}
+                  ToolCallsOverlay={ToolCallsOverlay}
+                  side="right"
+                  displayConfig={displayConfig}
+                />
+              </div>
+            )}
 
-        {viewMode === "terminal" && task.container_id && (
-          <TerminalPanel taskId={task.id} visible />
+            {/* Terminal — stays mounted, visibility controlled by prop */}
+            {task.container_id && (
+              <div
+                className="absolute inset-0"
+                style={{
+                  display: viewMode === "terminal" ? "block" : "none",
+                }}
+              >
+                <TerminalPanel
+                  taskId={task.id}
+                  visible={viewMode === "terminal"}
+                />
+              </div>
+            )}
+          </>
         )}
       </div>
 
