@@ -47,7 +47,7 @@ import {
 import { defaultServiceLabel, ServiceIcon } from "./ServiceIcon";
 import { TerminalPanel } from "./terminal/TerminalPanel";
 
-type GridViewMode = "conversation" | "terminal" | `service:${string}`;
+export type GridViewMode = "conversation" | "terminal" | `service:${string}`;
 type DetailViewMode = GridViewMode | "split";
 
 type TskPaneProps = {
@@ -69,6 +69,9 @@ type TskPaneProps = {
   onAutoScrollChange?: (autoScroll: boolean) => void;
   // Service display config from settings
   displayConfig?: Record<string, ServiceDisplayConfig>;
+  // Panel mounting controlled by parent (grid view LRU)
+  mountedPanels?: Set<GridViewMode>;
+  onPanelMount?: (mode: GridViewMode) => void;
 };
 
 // Extract recent tool calls from conversations
@@ -188,6 +191,8 @@ export const TskPane: FC<TskPaneProps> = ({
   initialAutoScroll,
   onAutoScrollChange,
   displayConfig = {},
+  mountedPanels: externalMountedPanels,
+  onPanelMount,
 }) => {
   // Services sorted by display config order
   const sortedServices = useMemo(
@@ -293,6 +298,28 @@ export const TskPane: FC<TskPaneProps> = ({
     },
     [splitStorageKey],
   );
+  // Lazy panel mounting: parent-controlled (grid view with global LRU) or self-managed (detail view)
+  const [internalMountedPanels, setInternalMountedPanels] = useState<
+    Set<GridViewMode>
+  >(() => new Set([controlledViewMode]));
+
+  const mountedPanels = externalMountedPanels ?? internalMountedPanels;
+
+  useEffect(() => {
+    if (externalMountedPanels) {
+      // Parent-controlled: notify parent when a new panel should mount
+      if (!externalMountedPanels.has(controlledViewMode)) {
+        onPanelMount?.(controlledViewMode);
+      }
+    } else {
+      // Self-managed (detail view): mount immediately
+      setInternalMountedPanels((prev) => {
+        if (prev.has(controlledViewMode)) return prev;
+        return new Set(prev).add(controlledViewMode);
+      });
+    }
+  }, [controlledViewMode, externalMountedPanels, onPanelMount]);
+
   const [showInfo, setShowInfo] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -334,6 +361,36 @@ export const TskPane: FC<TskPaneProps> = ({
   // Effective view mode: use split if active (detail only), otherwise use controlled mode
   const effectiveViewMode: DetailViewMode =
     !isGridView && isSplitMode ? "split" : controlledViewMode;
+
+  // Mount split panels when entering split mode
+  useEffect(() => {
+    if (effectiveViewMode === "split") {
+      if (externalMountedPanels) {
+        if (!externalMountedPanels.has(splitLeft)) onPanelMount?.(splitLeft);
+        if (!externalMountedPanels.has(splitRight)) onPanelMount?.(splitRight);
+      } else {
+        setInternalMountedPanels((prev) => {
+          const next = new Set(prev);
+          let changed = false;
+          if (!next.has(splitLeft)) {
+            next.add(splitLeft);
+            changed = true;
+          }
+          if (!next.has(splitRight)) {
+            next.add(splitRight);
+            changed = true;
+          }
+          return changed ? next : prev;
+        });
+      }
+    }
+  }, [
+    effectiveViewMode,
+    splitLeft,
+    splitRight,
+    externalMountedPanels,
+    onPanelMount,
+  ]);
 
   // Restore scroll position when returning to conversation view
   useEffect(() => {
@@ -818,7 +875,7 @@ export const TskPane: FC<TskPaneProps> = ({
         </div>
       )}
 
-      {/* Content */}
+      {/* Content — unified CSS-positioned rendering for both grid and detail */}
       <div
         className="flex-1 overflow-hidden relative"
         style={
@@ -827,262 +884,181 @@ export const TskPane: FC<TskPaneProps> = ({
             : undefined
         }
       >
-        {isGridView ? (
-          /* Grid view: only mount the active panel */
-          <>
-            {viewMode === "conversation" && (
-              <div className="relative h-full">
-                <div
-                  ref={scrollRef}
-                  onScroll={handleScroll}
-                  className="h-full overflow-auto p-2"
-                >
-                  {conversations.length > 0 ? (
-                    <ConversationList
-                      conversations={conversations}
-                      getToolResult={getToolResult}
-                      projectId={task.id}
-                      sessionId={task.id}
-                      scheduledJobs={[]}
-                    />
-                  ) : (
-                    <div className="flex items-center justify-center h-full">
-                      <p className="text-muted-foreground text-sm">
-                        Waiting for agent output...
-                      </p>
-                    </div>
-                  )}
-                </div>
-                {conversations.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={scrollToBottom}
-                    className={`absolute bottom-4 right-8 p-2 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 z-10 transition-all duration-200 ${
-                      isAtBottom
-                        ? "opacity-0 pointer-events-none scale-90"
-                        : "opacity-100 scale-100"
-                    }`}
-                    title="Scroll to bottom"
-                  >
-                    <ArrowDown className="w-4 h-4" />
-                  </button>
+        {/* Conversation */}
+        {mountedPanels.has("conversation") && (
+          <div
+            className="overflow-hidden"
+            style={getPanelPositionStyle(
+              "conversation",
+              viewMode,
+              splitLeft,
+              splitRight,
+            )}
+          >
+            <div className="relative h-full">
+              <div
+                ref={scrollRef}
+                onScroll={handleScroll}
+                className="h-full overflow-auto p-2"
+              >
+                {conversations.length > 0 ? (
+                  <ConversationList
+                    conversations={conversations}
+                    getToolResult={getToolResult}
+                    projectId={task.id}
+                    sessionId={task.id}
+                    scheduledJobs={[]}
+                  />
+                ) : (
+                  <div className="flex items-center justify-center h-full">
+                    <p className="text-muted-foreground text-sm">
+                      Waiting for agent output...
+                    </p>
+                  </div>
                 )}
               </div>
-            )}
+              {conversations.length > 0 && (
+                <button
+                  type="button"
+                  onClick={scrollToBottom}
+                  className={`absolute bottom-4 right-8 p-2 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 z-10 transition-all duration-200 ${
+                    isAtBottom
+                      ? "opacity-0 pointer-events-none scale-90"
+                      : "opacity-100 scale-100"
+                  }`}
+                  title="Scroll to bottom"
+                >
+                  <ArrowDown className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          </div>
+        )}
 
-            {typeof viewMode === "string" &&
-              viewMode.startsWith("service:") &&
-              (() => {
-                const key = viewMode.slice(8);
-                const svc = task.services.find((s) => s.key === key);
-                const cfg = displayConfig[key];
-                if (!svc) return null;
-                if (cfg?.embedType === "vnc") {
-                  return (
-                    <div className="relative h-full">
-                      <iframe
-                        src={svc.url}
-                        className="w-full h-full border-0"
-                        title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
-                      />
-                      <ToolCallsOverlay />
-                    </div>
-                  );
-                }
-                return (
+        {/* Service iframes — each stays mounted once loaded */}
+        {sortedServices.map((svc) => {
+          const cfg = displayConfig[svc.key];
+          const svcMode: GridViewMode = `service:${svc.key}`;
+          if (!mountedPanels.has(svcMode)) return null;
+          const isVnc = cfg?.embedType === "vnc";
+          const panelStyle = getPanelPositionStyle(
+            svcMode,
+            viewMode,
+            splitLeft,
+            splitRight,
+          );
+          const isVisible = panelStyle.display !== "none";
+          return (
+            <div key={svc.key} className="overflow-hidden" style={panelStyle}>
+              {isVnc ? (
+                <div className="relative h-full">
                   <iframe
                     src={svc.url}
-                    className="w-full h-full border-0 bg-white"
+                    className="w-full h-full border-0"
                     title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
                   />
-                );
-              })()}
-
-            {viewMode === "terminal" && task.container_id && (
-              <TerminalPanel taskId={task.id} visible />
-            )}
-          </>
-        ) : (
-          /* Detail view: panels positioned via CSS — reused across single/split */
-          <>
-            {/* Conversation */}
-            <div
-              className="overflow-hidden"
-              style={getPanelPositionStyle(
-                "conversation",
-                viewMode,
-                splitLeft,
-                splitRight,
-              )}
-            >
-              <div className="relative h-full">
-                <div
-                  ref={scrollRef}
-                  onScroll={handleScroll}
-                  className="h-full overflow-auto p-2"
-                >
-                  {conversations.length > 0 ? (
-                    <ConversationList
-                      conversations={conversations}
-                      getToolResult={getToolResult}
-                      projectId={task.id}
-                      sessionId={task.id}
-                      scheduledJobs={[]}
-                    />
-                  ) : (
-                    <div className="flex items-center justify-center h-full">
-                      <p className="text-muted-foreground text-sm">
-                        Waiting for agent output...
-                      </p>
-                    </div>
-                  )}
+                  {isVisible && <ToolCallsOverlay />}
                 </div>
-                {conversations.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={scrollToBottom}
-                    className={`absolute bottom-4 right-8 p-2 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 z-10 transition-all duration-200 ${
-                      isAtBottom
-                        ? "opacity-0 pointer-events-none scale-90"
-                        : "opacity-100 scale-100"
-                    }`}
-                    title="Scroll to bottom"
-                  >
-                    <ArrowDown className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Service iframes — each stays mounted once loaded */}
-            {sortedServices.map((svc) => {
-              const cfg = displayConfig[svc.key];
-              const svcMode: GridViewMode = `service:${svc.key}`;
-              const isVnc = cfg?.embedType === "vnc";
-              const panelStyle = getPanelPositionStyle(
-                svcMode,
-                viewMode,
-                splitLeft,
-                splitRight,
-              );
-              const isVisible = panelStyle.display !== "none";
-              return (
-                <div
-                  key={svc.key}
-                  className="overflow-hidden"
-                  style={panelStyle}
-                >
-                  {isVnc ? (
-                    <div className="relative h-full">
-                      <iframe
-                        src={svc.url}
-                        className="w-full h-full border-0"
-                        title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
-                      />
-                      {isVisible && <ToolCallsOverlay />}
-                    </div>
-                  ) : (
-                    <iframe
-                      src={svc.url}
-                      className="w-full h-full border-0 bg-white"
-                      title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
-                    />
-                  )}
-                </div>
-              );
-            })}
-
-            {/* Terminal — stays mounted, visibility controlled by prop */}
-            {task.container_id && (
-              <div
-                className="overflow-hidden"
-                style={getPanelPositionStyle(
-                  "terminal",
-                  viewMode,
-                  splitLeft,
-                  splitRight,
-                )}
-              >
-                <TerminalPanel
-                  taskId={task.id}
-                  visible={
-                    viewMode === "terminal" ||
-                    (viewMode === "split" &&
-                      (splitLeft === "terminal" || splitRight === "terminal"))
-                  }
+              ) : (
+                <iframe
+                  src={svc.url}
+                  className="w-full h-full border-0 bg-white"
+                  title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
                 />
-              </div>
-            )}
+              )}
+            </div>
+          );
+        })}
 
-            {/* Split mode: vertical divider */}
-            {viewMode === "split" && (
-              <div className="absolute top-0 bottom-0 left-1/2 w-px bg-border z-[5]" />
+        {/* Terminal — stays mounted, visibility controlled by prop */}
+        {mountedPanels.has("terminal") && task.container_id && (
+          <div
+            className="overflow-hidden"
+            style={getPanelPositionStyle(
+              "terminal",
+              viewMode,
+              splitLeft,
+              splitRight,
             )}
+          >
+            <TerminalPanel
+              taskId={task.id}
+              visible={
+                viewMode === "terminal" ||
+                (viewMode === "split" &&
+                  (splitLeft === "terminal" || splitRight === "terminal"))
+              }
+            />
+          </div>
+        )}
 
-            {/* Split mode: floating mode selectors */}
-            {viewMode === "split" && (
-              <>
-                {/* Left pane toolbar */}
-                <div
-                  className="absolute top-1 flex gap-0.5 bg-background/80 backdrop-blur-sm rounded p-0.5 z-10"
-                  style={{ right: "calc(50% + 4px)" }}
-                >
-                  {splitModeOptions.map((opt) => {
-                    const isDisabled =
-                      opt.mode === "terminal" && splitRight === "terminal";
-                    return (
-                      <button
-                        key={opt.mode}
-                        type="button"
-                        onClick={() => !isDisabled && setSplitLeft(opt.mode)}
-                        className={`p-1 rounded ${splitLeft === opt.mode ? "bg-muted" : isDisabled ? "opacity-30 cursor-not-allowed" : "hover:bg-muted/50"}`}
-                        title={
-                          isDisabled
-                            ? "Terminal is shown in the other pane"
-                            : opt.label
-                        }
-                      >
-                        {opt.mode === "conversation" ? (
-                          <MessageSquare className="w-3 h-3" />
-                        ) : opt.mode === "terminal" ? (
-                          <SquareTerminal className="w-3 h-3" />
-                        ) : (
-                          <ServiceIcon name={opt.iconName} />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-                {/* Right pane toolbar */}
-                <div className="absolute top-1 right-1 flex gap-0.5 bg-background/80 backdrop-blur-sm rounded p-0.5 z-10">
-                  {splitModeOptions.map((opt) => {
-                    const isDisabled =
-                      opt.mode === "terminal" && splitLeft === "terminal";
-                    return (
-                      <button
-                        key={opt.mode}
-                        type="button"
-                        onClick={() => !isDisabled && setSplitRight(opt.mode)}
-                        className={`p-1 rounded ${splitRight === opt.mode ? "bg-muted" : isDisabled ? "opacity-30 cursor-not-allowed" : "hover:bg-muted/50"}`}
-                        title={
-                          isDisabled
-                            ? "Terminal is shown in the other pane"
-                            : opt.label
-                        }
-                      >
-                        {opt.mode === "conversation" ? (
-                          <MessageSquare className="w-3 h-3" />
-                        ) : opt.mode === "terminal" ? (
-                          <SquareTerminal className="w-3 h-3" />
-                        ) : (
-                          <ServiceIcon name={opt.iconName} />
-                        )}
-                      </button>
-                    );
-                  })}
-                </div>
-              </>
-            )}
+        {/* Split mode: vertical divider */}
+        {viewMode === "split" && (
+          <div className="absolute top-0 bottom-0 left-1/2 w-px bg-border z-[5]" />
+        )}
+
+        {/* Split mode: floating mode selectors */}
+        {viewMode === "split" && (
+          <>
+            {/* Left pane toolbar */}
+            <div
+              className="absolute top-1 flex gap-0.5 bg-background/80 backdrop-blur-sm rounded p-0.5 z-10"
+              style={{ right: "calc(50% + 4px)" }}
+            >
+              {splitModeOptions.map((opt) => {
+                const isDisabled =
+                  opt.mode === "terminal" && splitRight === "terminal";
+                return (
+                  <button
+                    key={opt.mode}
+                    type="button"
+                    onClick={() => !isDisabled && setSplitLeft(opt.mode)}
+                    className={`p-1 rounded ${splitLeft === opt.mode ? "bg-muted" : isDisabled ? "opacity-30 cursor-not-allowed" : "hover:bg-muted/50"}`}
+                    title={
+                      isDisabled
+                        ? "Terminal is shown in the other pane"
+                        : opt.label
+                    }
+                  >
+                    {opt.mode === "conversation" ? (
+                      <MessageSquare className="w-3 h-3" />
+                    ) : opt.mode === "terminal" ? (
+                      <SquareTerminal className="w-3 h-3" />
+                    ) : (
+                      <ServiceIcon name={opt.iconName} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+            {/* Right pane toolbar */}
+            <div className="absolute top-1 right-1 flex gap-0.5 bg-background/80 backdrop-blur-sm rounded p-0.5 z-10">
+              {splitModeOptions.map((opt) => {
+                const isDisabled =
+                  opt.mode === "terminal" && splitLeft === "terminal";
+                return (
+                  <button
+                    key={opt.mode}
+                    type="button"
+                    onClick={() => !isDisabled && setSplitRight(opt.mode)}
+                    className={`p-1 rounded ${splitRight === opt.mode ? "bg-muted" : isDisabled ? "opacity-30 cursor-not-allowed" : "hover:bg-muted/50"}`}
+                    title={
+                      isDisabled
+                        ? "Terminal is shown in the other pane"
+                        : opt.label
+                    }
+                  >
+                    {opt.mode === "conversation" ? (
+                      <MessageSquare className="w-3 h-3" />
+                    ) : opt.mode === "terminal" ? (
+                      <SquareTerminal className="w-3 h-3" />
+                    ) : (
+                      <ServiceIcon name={opt.iconName} />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </>
         )}
       </div>

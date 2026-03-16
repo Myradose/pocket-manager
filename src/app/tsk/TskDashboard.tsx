@@ -34,16 +34,29 @@ import {
 } from "./queries";
 import { defaultServiceLabel, ServiceIcon } from "./ServiceIcon";
 import { ServiceSettingsDialog } from "./ServiceSettingsDialog";
-import { TskPane } from "./TskPane";
+import { type GridViewMode, TskPane } from "./TskPane";
 import { useWorkspacePath } from "./useWorkspacePath";
 
 type TskDashboardProps = {
   taskIds: string[];
 };
 
-type GridViewMode = "conversation" | "terminal" | `service:${string}`;
-
+/** Max number of inactive (non-active-view) panels kept mounted across all grid tasks */
+const GRID_PANEL_LRU_CAP = 8;
 const GRID_CELL_MIN_HEIGHT = 320;
+
+type PanelKey = `${string}\0${GridViewMode}`;
+const toPanelKey = (taskId: string, mode: GridViewMode): PanelKey =>
+  `${taskId}\0${mode}`;
+const fromPanelKey = (
+  key: PanelKey,
+): { taskId: string; mode: GridViewMode } => {
+  const idx = key.indexOf("\0");
+  return {
+    taskId: key.slice(0, idx),
+    mode: key.slice(idx + 1) as GridViewMode,
+  };
+};
 
 const WorkspaceSelector: FC = () => {
   const { workspacePath, setWorkspacePath } = useWorkspacePath();
@@ -201,6 +214,72 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
   const [taskAutoScroll, setTaskAutoScroll] = useState<Record<string, boolean>>(
     {},
   );
+
+  // Global LRU for grid panel mounting — tracks all mounted panels across grid tasks
+  // Ordered oldest-first: index 0 is the least recently used
+  const [gridPanelLru, setGridPanelLru] = useState<PanelKey[]>([]);
+
+  // Compute mounted panels per task from LRU + always include the active view mode
+  const getTaskMountedPanels = useCallback(
+    (taskId: string): Set<GridViewMode> => {
+      const activeMode = taskViewModes[taskId] ?? "terminal";
+      const panels = new Set<GridViewMode>([activeMode]);
+      for (const key of gridPanelLru) {
+        const parsed = fromPanelKey(key);
+        if (parsed.taskId === taskId) {
+          panels.add(parsed.mode);
+        }
+      }
+      return panels;
+    },
+    [gridPanelLru, taskViewModes],
+  );
+
+  // Handle a grid task requesting a new panel to be mounted
+  const handleGridPanelMount = useCallback(
+    (taskId: string, mode: GridViewMode) => {
+      setGridPanelLru((prev) => {
+        const key = toPanelKey(taskId, mode);
+        // If already in LRU, move to end (most recently used)
+        const without = prev.filter((k) => k !== key);
+        const next = [...without, key];
+        // Evict oldest entries that exceed the cap, but never evict
+        // a panel that is the active view mode for its task
+        while (next.length > GRID_PANEL_LRU_CAP) {
+          const evictIdx = next.findIndex((k) => {
+            const parsed = fromPanelKey(k);
+            const activeMode = taskViewModes[parsed.taskId] ?? "terminal";
+            return parsed.mode !== activeMode;
+          });
+          if (evictIdx === -1) break; // all are active, can't evict
+          next.splice(evictIdx, 1);
+        }
+        return next;
+      });
+    },
+    [taskViewModes],
+  );
+
+  // Touch LRU when active view mode changes (move to most recently used)
+  useEffect(() => {
+    setGridPanelLru((prev) => {
+      let changed = false;
+      let next = prev;
+      for (const [taskId, mode] of Object.entries(taskViewModes)) {
+        const key = toPanelKey(taskId, mode);
+        const idx = next.indexOf(key);
+        if (idx >= 0 && idx !== next.length - 1) {
+          if (!changed) {
+            next = [...next];
+            changed = true;
+          }
+          next.splice(idx, 1);
+          next.push(key);
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [taskViewModes]);
 
   // Toggle for showing tool calls overlay on VNC
   const [showToolsOverlay, setShowToolsOverlay] = useState(true);
@@ -369,6 +448,19 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
     prevTaskIdsRef.current = currentTaskIds;
   }, [activeTasks, taskViewModes]);
 
+  // Detail view only when user explicitly navigates to specific task(s) via URL
+  const isDetailView = taskIds.length > 0 && allFilteredTasks.length === 1;
+  const detailTaskId = isDetailView ? (allFilteredTasks[0]?.id ?? null) : null;
+
+  // Include the detail task in the render list even if it's stopped (not in `tasks`)
+  const renderTasks = useMemo(() => {
+    if (!detailTaskId) return tasks;
+    if (tasks.some((t) => t.id === detailTaskId)) return tasks;
+    const detailTask = allFilteredTasks.find((t) => t.id === detailTaskId);
+    if (!detailTask) return tasks;
+    return [detailTask, ...tasks];
+  }, [detailTaskId, allFilteredTasks, tasks]);
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -394,9 +486,6 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
     );
   }
 
-  // Detail view only when user explicitly navigates to specific task(s) via URL
-  const isDetailView = taskIds.length > 0 && allFilteredTasks.length === 1;
-
   // Grid layout: cap columns at 3, rows auto-sized with min height
   const gridCols =
     tasks.length <= 2 ? Math.max(tasks.length, 1) : tasks.length <= 4 ? 2 : 3;
@@ -421,83 +510,6 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
   };
 
   const globalState = getGlobalState();
-
-  // For the detail view with a specific task requested
-  if (isDetailView) {
-    const detailTask = allFilteredTasks[0];
-    if (!detailTask) return null;
-
-    return (
-      <div className="h-screen w-screen overflow-hidden bg-background flex flex-col">
-        <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
-          <Link
-            to="/tsk"
-            search={{}}
-            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            Back to all tasks
-          </Link>
-          <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setShowToolsOverlay((prev) => !prev)}
-              className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
-                showToolsOverlay
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
-              }`}
-              title="Toggle tool calls overlay on VNC"
-            >
-              <MessageSquare className="w-3 h-3" />
-              Tools
-            </button>
-            <button
-              type="button"
-              onClick={() => setShowServiceSettings(true)}
-              className="p-1.5 rounded hover:bg-muted"
-              title="Service display settings"
-            >
-              <Settings className="w-3 h-3" />
-            </button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-hidden p-1">
-          <TskPane
-            key={detailTask.id}
-            task={detailTask}
-            isGridView={false}
-            viewMode={
-              taskViewModes[detailTask.id] ??
-              (detailTask.status === "STOPPED" ? "conversation" : "terminal")
-            }
-            onViewModeChange={(mode) => setTaskViewMode(detailTask.id, mode)}
-            showToolsOverlay={showToolsOverlay}
-            isSelected={false}
-            showSelectionControls={false}
-            savedScrollPosition={taskScrollPositions[detailTask.id]}
-            onScrollPositionChange={(pos) =>
-              setTaskScrollPosition(detailTask.id, pos)
-            }
-            initialAutoScroll={taskAutoScroll[detailTask.id]}
-            onAutoScrollChange={(auto) =>
-              setTaskAutoScrollState(detailTask.id, auto)
-            }
-            displayConfig={displayConfig}
-          />
-        </div>
-        {workspacePath && (
-          <ServiceSettingsDialog
-            open={showServiceSettings}
-            onOpenChange={setShowServiceSettings}
-            workspacePath={workspacePath}
-            allServiceKeys={allServiceKeys}
-            displayConfig={displayConfig}
-          />
-        )}
-      </div>
-    );
-  }
 
   // No active tasks — show create prompt with stopped tasks if any
   if (tasks.length === 0 && taskIds.length === 0) {
@@ -537,152 +549,218 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
 
   return (
     <div className="h-screen w-screen overflow-hidden bg-background flex flex-col">
-      {/* Header bar */}
-      <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30 shrink-0">
-        <div className="flex items-center gap-3">
-          <CreateTaskDialog />
-          <WorkspaceSelector />
-          <span className="text-sm font-medium text-muted-foreground">
-            {isFocusMode
-              ? `${tasks.length} focused`
-              : `${activeTasks.length} active`}{" "}
-            {tasks.length === 1 ? "task" : "tasks"}
-          </span>
-          {!isFocusMode && selectedTaskIds.length > 0 && (
-            <span className="text-xs text-muted-foreground">
-              ({selectedTaskIds.length} selected)
+      {/* Conditional header */}
+      {detailTaskId ? (
+        <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30 shrink-0">
+          <Link
+            to="/tsk"
+            search={{}}
+            className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to all tasks
+          </Link>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setShowToolsOverlay((prev) => !prev)}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
+                showToolsOverlay
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted"
+              }`}
+              title="Toggle tool calls overlay on VNC"
+            >
+              <MessageSquare className="w-3 h-3" />
+              Tools
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowServiceSettings(true)}
+              className="p-1.5 rounded hover:bg-muted"
+              title="Service display settings"
+            >
+              <Settings className="w-3 h-3" />
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30 shrink-0">
+          <div className="flex items-center gap-3">
+            <CreateTaskDialog />
+            <WorkspaceSelector />
+            <span className="text-sm font-medium text-muted-foreground">
+              {isFocusMode
+                ? `${tasks.length} focused`
+                : `${activeTasks.length} active`}{" "}
+              {tasks.length === 1 ? "task" : "tasks"}
             </span>
-          )}
-          {!isFocusMode && selectedTaskIds.length > 0 && (
-            <button
-              type="button"
-              onClick={enterFocusMode}
-              className="flex items-center gap-1 px-2 py-1 rounded text-sm bg-blue-600 text-white hover:bg-blue-700"
-            >
-              <Focus className="w-3 h-3" />
-              Focus
-            </button>
-          )}
-          {isFocusMode && (
-            <button
-              type="button"
-              onClick={exitFocusMode}
-              className="flex items-center gap-1 px-2 py-1 rounded text-sm bg-orange-600 text-white hover:bg-orange-700"
-            >
-              <XCircle className="w-3 h-3" />
-              Exit Focus
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-1">
-          <span className="text-xs text-muted-foreground mr-2">All tasks:</span>
-          <button
-            type="button"
-            onClick={() => setAllTasksViewMode("terminal")}
-            className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
-              globalState === "terminal"
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted"
-            }`}
-          >
-            <SquareTerminal className="w-3 h-3" />
-            Terminal
-          </button>
-          <button
-            type="button"
-            onClick={() => setAllTasksViewMode("conversation")}
-            className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
-              globalState === "conversation"
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted"
-            }`}
-          >
-            <MessageSquare className="w-3 h-3" />
-            Conversation
-          </button>
-          {allServiceKeys.map((key) => {
-            const cfg = displayConfig[key];
-            if (cfg && !cfg.visible) return null;
-            const svcMode: GridViewMode = `service:${key}`;
-            return (
+            {!isFocusMode && selectedTaskIds.length > 0 && (
+              <span className="text-xs text-muted-foreground">
+                ({selectedTaskIds.length} selected)
+              </span>
+            )}
+            {!isFocusMode && selectedTaskIds.length > 0 && (
               <button
-                key={key}
                 type="button"
-                onClick={() => setAllTasksViewMode(svcMode)}
-                className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
-                  globalState === svcMode
-                    ? "bg-primary text-primary-foreground"
-                    : "hover:bg-muted"
-                }`}
+                onClick={enterFocusMode}
+                className="flex items-center gap-1 px-2 py-1 rounded text-sm bg-blue-600 text-white hover:bg-blue-700"
               >
-                <ServiceIcon name={cfg?.icon ?? "ExternalLink"} />
-                {cfg?.label ?? defaultServiceLabel(key)}
+                <Focus className="w-3 h-3" />
+                Focus
               </button>
-            );
-          })}
-          <span className="text-muted-foreground mx-2">|</span>
-          <button
-            type="button"
-            onClick={() => setShowToolsOverlay((prev) => !prev)}
-            className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
-              showToolsOverlay
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted"
-            }`}
-            title="Toggle tool calls overlay on VNC"
-          >
-            <MessageSquare className="w-3 h-3" />
-            Tools
-          </button>
-          <button
-            type="button"
-            onClick={() => setShowServiceSettings(true)}
-            className="p-1.5 rounded hover:bg-muted"
-            title="Service display settings"
-          >
-            <Settings className="w-3 h-3" />
-          </button>
+            )}
+            {isFocusMode && (
+              <button
+                type="button"
+                onClick={exitFocusMode}
+                className="flex items-center gap-1 px-2 py-1 rounded text-sm bg-orange-600 text-white hover:bg-orange-700"
+              >
+                <XCircle className="w-3 h-3" />
+                Exit Focus
+              </button>
+            )}
+          </div>
+          <div className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground mr-2">
+              All tasks:
+            </span>
+            <button
+              type="button"
+              onClick={() => setAllTasksViewMode("terminal")}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
+                globalState === "terminal"
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted"
+              }`}
+            >
+              <SquareTerminal className="w-3 h-3" />
+              Terminal
+            </button>
+            <button
+              type="button"
+              onClick={() => setAllTasksViewMode("conversation")}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
+                globalState === "conversation"
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted"
+              }`}
+            >
+              <MessageSquare className="w-3 h-3" />
+              Conversation
+            </button>
+            {allServiceKeys.map((key) => {
+              const cfg = displayConfig[key];
+              if (cfg && !cfg.visible) return null;
+              const svcMode: GridViewMode = `service:${key}`;
+              return (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() => setAllTasksViewMode(svcMode)}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
+                    globalState === svcMode
+                      ? "bg-primary text-primary-foreground"
+                      : "hover:bg-muted"
+                  }`}
+                >
+                  <ServiceIcon name={cfg?.icon ?? "ExternalLink"} />
+                  {cfg?.label ?? defaultServiceLabel(key)}
+                </button>
+              );
+            })}
+            <span className="text-muted-foreground mx-2">|</span>
+            <button
+              type="button"
+              onClick={() => setShowToolsOverlay((prev) => !prev)}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
+                showToolsOverlay
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted"
+              }`}
+              title="Toggle tool calls overlay on VNC"
+            >
+              <MessageSquare className="w-3 h-3" />
+              Tools
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowServiceSettings(true)}
+              className="p-1.5 rounded hover:bg-muted"
+              title="Service display settings"
+            >
+              <Settings className="w-3 h-3" />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Active task grid — scrollable */}
+      {/* Unified task container */}
       <div className="flex-1 overflow-auto p-1 min-h-0">
         <div
-          className="grid gap-1 h-full"
-          style={{
-            gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
-            gridTemplateRows: `repeat(${gridRows}, minmax(${GRID_CELL_MIN_HEIGHT}px, 1fr))`,
-            minHeight:
-              gridRows > 1 ? `${gridRows * GRID_CELL_MIN_HEIGHT}px` : "100%",
-          }}
+          className={detailTaskId ? "h-full" : "grid gap-1 h-full"}
+          style={
+            detailTaskId
+              ? undefined
+              : {
+                  gridTemplateColumns: `repeat(${gridCols}, 1fr)`,
+                  gridTemplateRows: `repeat(${gridRows}, minmax(${GRID_CELL_MIN_HEIGHT}px, 1fr))`,
+                  minHeight:
+                    gridRows > 1
+                      ? `${gridRows * GRID_CELL_MIN_HEIGHT}px`
+                      : "100%",
+                }
+          }
         >
-          {tasks.map((task) => (
-            <TskPane
-              key={task.id}
-              task={task}
-              isGridView
-              viewMode={taskViewModes[task.id] ?? "terminal"}
-              onViewModeChange={(mode) => setTaskViewMode(task.id, mode)}
-              showToolsOverlay={showToolsOverlay}
-              isSelected={selectedTaskIds.includes(task.id)}
-              onToggleSelect={() => toggleTaskSelection(task.id)}
-              showSelectionControls={!isFocusMode}
-              savedScrollPosition={taskScrollPositions[task.id]}
-              onScrollPositionChange={(pos) =>
-                setTaskScrollPosition(task.id, pos)
-              }
-              initialAutoScroll={taskAutoScroll[task.id]}
-              onAutoScrollChange={(auto) =>
-                setTaskAutoScrollState(task.id, auto)
-              }
-              displayConfig={displayConfig}
-            />
-          ))}
+          {renderTasks.map((task) => {
+            const isDetail = task.id === detailTaskId;
+            const isHidden = detailTaskId != null && !isDetail;
+            return (
+              <div
+                key={task.id}
+                className={isDetail ? "h-full" : ""}
+                style={isHidden ? { display: "none" } : undefined}
+              >
+                <TskPane
+                  task={task}
+                  isGridView={!isDetail}
+                  viewMode={
+                    taskViewModes[task.id] ??
+                    (task.status === "STOPPED" ? "conversation" : "terminal")
+                  }
+                  onViewModeChange={(mode) => setTaskViewMode(task.id, mode)}
+                  showToolsOverlay={showToolsOverlay}
+                  isSelected={!isDetail && selectedTaskIds.includes(task.id)}
+                  onToggleSelect={
+                    !isDetail ? () => toggleTaskSelection(task.id) : undefined
+                  }
+                  showSelectionControls={!isDetail && !isFocusMode}
+                  savedScrollPosition={taskScrollPositions[task.id]}
+                  onScrollPositionChange={(pos) =>
+                    setTaskScrollPosition(task.id, pos)
+                  }
+                  initialAutoScroll={taskAutoScroll[task.id]}
+                  onAutoScrollChange={(auto) =>
+                    setTaskAutoScrollState(task.id, auto)
+                  }
+                  displayConfig={displayConfig}
+                  mountedPanels={
+                    !isDetail ? getTaskMountedPanels(task.id) : undefined
+                  }
+                  onPanelMount={
+                    !isDetail
+                      ? (mode) => handleGridPanelMount(task.id, mode)
+                      : undefined
+                  }
+                />
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* Stopped tasks strip */}
-      {stoppedTasks.length > 0 && (
+      {/* Stopped tasks strip — grid only */}
+      {!detailTaskId && stoppedTasks.length > 0 && (
         <div className="border-t bg-muted/20 shrink-0">
           <button
             type="button"
