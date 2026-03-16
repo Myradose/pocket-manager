@@ -10,8 +10,8 @@ if [ -d "$temp_dir" ]; then
   rm -rf "$temp_dir"
 fi
 
-pnpm build
-output_file=$(pnpm pack --pack-destination ./$temp_dir --json 2>&1 | sed -n '/^{/,$p' | jq -r '.filename')
+bun run build
+output_file=$(npm pack --pack-destination ./$temp_dir --json 2>&1 | sed -n '/^{/,$p' | jq -r '.filename')
 
 echo "#!/usr/bin/env bash" >> $temp_bin_file
 echo "" >> $temp_bin_file

@@ -1,6 +1,6 @@
 ---
 description: '不足しているi18n翻訳を補完してコンパイル'
-allowed-tools: Bash(pnpm), Read(*), Edit(*.json), Grep
+allowed-tools: Bash(bun), Read(*), Edit(*.json), Grep
 ---
 
 Generate missing i18n translations for Japanese and Simplified Chinese locales, then compile and verify catalogs.
@@ -8,7 +8,7 @@ Generate missing i18n translations for Japanese and Simplified Chinese locales, 
 <workflow>
 ## 1. Extract and Identify Missing Translations
 
-Run `pnpm lingui:extract` to update catalogs and identify missing entries.
+Run `bun run lingui:extract` to update catalogs and identify missing entries.
 
 For each locale (ja, zh_CN), identify all keys with empty translations by comparing against the English source.
 
@@ -28,7 +28,7 @@ Edit `src/lib/i18n/locales/{locale}/messages.json` to replace empty `"translatio
 
 ## 4. Compile and Verify
 
-1. Run `pnpm lingui:compile` to compile catalogs
+1. Run `bun run lingui:compile` to compile catalogs
 2. Run `scripts/lingui-check.sh` to verify completion
 3. Report summary of translations added
 </workflow>
@@ -40,6 +40,6 @@ Edit `src/lib/i18n/locales/{locale}/messages.json` to replace empty `"translatio
 </constraints>
 
 <error_handling>
-- If lingui:compile fails: Check JSON syntax with `pnpm fix`
+- If lingui:compile fails: Check JSON syntax with `bun run fix`
 - If verification fails: Re-check all empty translations were replaced, verify key names match across locales
 </error_handling>

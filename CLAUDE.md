@@ -5,14 +5,14 @@
 **NEVER**:
 - Use `as` type casting in ANY context including test code (explain the problem to the user instead)
 - Use raw `fetch` or bypass TanStack Query for API calls
-- Run `pnpm dev` or `pnpm start` (dev servers)
+- Run `bun run dev` or `bun run start` (dev servers)
 - Use `node:fs`, `node:path`, etc. directly (use Effect-TS equivalents)
 
 **ALWAYS**:
 - Use Effect-TS for all backend side effects
 - Use Hono RPC + TanStack Query for all API calls
 - Follow TDD: write tests first, then implement
-- Run `pnpm typecheck` and `pnpm fix` before committing
+- Run `bun run typecheck` and `bun run fix` before committing
 
 ## Project Overview
 
@@ -31,19 +31,19 @@ terminal access, service iframe views, and a 3-up comparison layout for parallel
 
 ```bash
 # Type checking (mandatory before commits)
-pnpm typecheck
+bun run typecheck
 
 # Auto-fix linting and formatting (Biome)
-pnpm fix
+bun run fix
 ```
 
-After `pnpm fix`, manually address any remaining issues.
+After `bun run fix`, manually address any remaining issues.
 
 ### Testing
 
 ```bash
 # Run unit tests
-pnpm test
+bun run test
 ```
 
 **TDD Workflow**: Write tests → Run tests → Implement → Verify → Quality checks

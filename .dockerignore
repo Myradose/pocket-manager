@@ -4,7 +4,7 @@
 
 # Local dependencies and caches
 node_modules
-.pnpm-store
+.bun
 
 # Build artifacts
 dist
@@ -26,6 +26,5 @@ coverage
 # Logs and environment files
 *.log
 npm-debug.log*
-pnpm-debug.log*
 .env
 .env.*

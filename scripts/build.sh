@@ -6,5 +6,5 @@ if [ -d "dist" ]; then
   rm -rf dist
 fi
 
-pnpm build:frontend
-pnpm build:backend
+bun run build:frontend
+bun run build:backend

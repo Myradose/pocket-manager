@@ -26,13 +26,13 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      - name: Setup Node & pnpm
+      - name: Setup Node & Bun
         uses: ./.github/actions/setup-node
 
       - name: Install Playwright
         run: |
           sudo npx playwright install-deps
-          pnpm exec playwright install
+          bunx playwright install
 
       - name: Set up Git
         uses: ./.github/actions/setup-git
@@ -41,7 +41,7 @@ jobs:
           origin: ${{ github.head_ref }}
 
       - name: Build project
-        run: pnpm build
+        run: bun run build
 
       - name: Capture screenshots
         timeout-minutes: 3
@@ -49,7 +49,7 @@ jobs:
           if [ -d "e2e/snapshots" ]; then
             rm -rf e2e/snapshots
           fi
-          pnpm e2e
+          bun run e2e
         env:
           MAX_CONCURRENCY: 10
 

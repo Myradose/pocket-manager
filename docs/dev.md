@@ -53,13 +53,13 @@ Claude Code Viewer provides advanced control over Claude Code session processes:
 ### Requirements
 
 - **Node.js**: Version 20.19.0 or later (see [.node-version](../.node-version))
-- **Package Manager**: pnpm 10.8.1 or later
+- **Package Manager**: bun 1.2 or later
 
 ### Initial Setup
 
 ```bash
 # Install dependencies
-pnpm install
+bun install
 ```
 
 ## Starting the Development Server
@@ -67,7 +67,7 @@ pnpm install
 ### Development Mode
 
 ```bash
-pnpm dev
+bun run dev
 ```
 
 This command starts both servers in parallel using `npm-run-all2`:
@@ -82,10 +82,10 @@ Build and run in production mode:
 
 ```bash
 # Build
-pnpm build
+bun run build
 
 # Start production server
-pnpm start
+bun run start
 ```
 
 **Build Process** (`./scripts/build.sh`):
@@ -116,10 +116,10 @@ The production server serves static files and handles API requests on a single p
 
 ```bash
 # Auto-fix issues (format + lint with unsafe fixes)
-pnpm fix
+bun run fix
 
 # Check only (format + lint check, run in CI)
-pnpm lint
+bun run lint
 ```
 
 **Configuration**: `/biome.json`
@@ -137,10 +137,10 @@ Vitest-based tests are written for backend core logic (Effect-TS based service l
 
 ```bash
 # Run once
-pnpm test
+bun run test
 
 # Watch mode
-pnpm test:watch
+bun run test:watch
 ```
 
 **Configuration**:
@@ -154,7 +154,7 @@ pnpm test:watch
 ### Type Checking: TypeScript
 
 ```bash
-pnpm typecheck
+bun run typecheck
 ```
 
 Strict type configuration (`@tsconfig/strictest`) is adopted, emphasizing type safety.
@@ -171,11 +171,11 @@ Playwright-based snapshot capture is implemented to visually confirm UI changes.
 
 ```bash
 # Run server startup and snapshot capture together
-pnpm e2e
+bun run e2e
 
 # Or execute manually
-pnpm e2e:start-server        # Start server
-pnpm e2e:capture-snapshots   # Capture snapshots
+bun run e2e:start-server        # Start server
+bun run e2e:capture-snapshots   # Capture snapshots
 ```
 
 **Important**: In local environments, UI varies based on the current path. **Do not commit locally captured snapshots**.
@@ -230,7 +230,7 @@ We welcome contributions! Please:
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes with appropriate tests
-4. Ensure all quality checks pass (`pnpm lint`, `pnpm test`, `pnpm typecheck`)
+4. Ensure all quality checks pass (`bun run lint`, `bun run test`, `bun run typecheck`)
 5. Submit a pull request with a clear description of your changes
 
 For UI changes, add the `vrt` label to your PR to update visual snapshots.

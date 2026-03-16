@@ -1,6 +1,6 @@
 ---
 description: 'セッションログのスキーマパースエラーを修正してPR作成'
-allowed-tools: Edit(*.ts), Write(*.ts), Bash(pnpm, git, gh)
+allowed-tools: Edit(*.ts), Write(*.ts), Bash(bun, git, gh)
 ---
 
 <role>
@@ -26,9 +26,9 @@ User provides failing JSON data from session logs. The data structure indicates 
 - Verify both old and new formats parse successfully
 
 **4. Verify and commit**:
-- Run `pnpm typecheck` (must pass)
-- Run `pnpm test` (must pass)
-- Run `pnpm fix`
+- Run `bun run typecheck` (must pass)
+- Run `bun run test` (must pass)
+- Run `bun run fix`
 - Commit changes
 
 **5. Create PR**:

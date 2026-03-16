@@ -1,5 +1,5 @@
-name: "Setup Node & pnpm"
-description: "Install pnpm and setup Node.js with pnpm cache (fixed versions)"
+name: "Setup Node & Bun"
+description: "Setup Node.js and Bun with dependency caching"
 runs:
   using: "composite"
   steps:
@@ -8,10 +8,11 @@ runs:
       with:
         node-version-file: '.node-version'
 
-    - name: Setup pnpm
-      shell: bash
-      run: npm install -g pnpm
+    - name: Setup Bun
+      uses: oven-sh/setup-bun@v2
+      with:
+        bun-version: latest
 
     - name: Install Dependencies
       shell: bash
-      run: pnpm i --frozen-lockfile --ignore-scripts
+      run: bun install --frozen-lockfile
