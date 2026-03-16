@@ -188,9 +188,28 @@ const SplitPane: FC<{
     return opts;
   }, [task.services, displayConfig]);
 
-  const content = (() => {
-    if (mode === "conversation") {
-      return (
+  const sortedSplitServices = useMemo(
+    () =>
+      [...task.services]
+        .filter((s) => {
+          const cfg = displayConfig[s.key];
+          return !cfg || cfg.visible;
+        })
+        .sort((a, b) => {
+          const oA = displayConfig[a.key]?.order ?? 0;
+          const oB = displayConfig[b.key]?.order ?? 0;
+          return oA - oB;
+        }),
+    [task.services, displayConfig],
+  );
+
+  return (
+    <div className={`relative h-full ${borderClass}`}>
+      {/* Conversation */}
+      <div
+        className="absolute inset-0"
+        style={{ display: mode === "conversation" ? "block" : "none" }}
+      >
         <div className="h-full overflow-auto p-2">
           {conversations.length > 0 ? (
             <ConversationList
@@ -208,54 +227,50 @@ const SplitPane: FC<{
             </div>
           )}
         </div>
-      );
-    }
-    if (mode === "terminal") {
-      return task.container_id ? (
-        <TerminalPanel taskId={task.id} visible />
-      ) : (
-        <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-          No container
-        </div>
-      );
-    }
-    if (mode.startsWith("service:")) {
-      const key = mode.slice(8);
-      const svc = task.services.find((s) => s.key === key);
-      const cfg = displayConfig[key];
-      if (!svc) {
-        return (
-          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-            Service not available
-          </div>
-        );
-      }
-      if (cfg?.embedType === "vnc") {
-        return (
-          <div className="relative h-full">
-            <iframe
-              src={svc.url}
-              className="w-full h-full border-0"
-              title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
-            />
-            <ToolCallsOverlay />
-          </div>
-        );
-      }
-      return (
-        <iframe
-          src={svc.url}
-          className="w-full h-full border-0 bg-white"
-          title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
-        />
-      );
-    }
-    return null;
-  })();
+      </div>
 
-  return (
-    <div className={`relative h-full ${borderClass}`}>
-      {content}
+      {/* Terminal */}
+      {task.container_id && (
+        <div
+          className="absolute inset-0"
+          style={{ display: mode === "terminal" ? "block" : "none" }}
+        >
+          <TerminalPanel taskId={task.id} visible={mode === "terminal"} />
+        </div>
+      )}
+
+      {/* Service iframes — each stays mounted */}
+      {sortedSplitServices.map((svc) => {
+        const cfg = displayConfig[svc.key];
+        const svcMode: GridViewMode = `service:${svc.key}`;
+        const isActive = mode === svcMode;
+        const isVnc = cfg?.embedType === "vnc";
+        return (
+          <div
+            key={svc.key}
+            className="absolute inset-0"
+            style={{ display: isActive ? "block" : "none" }}
+          >
+            {isVnc ? (
+              <div className="relative h-full">
+                <iframe
+                  src={svc.url}
+                  className="w-full h-full border-0"
+                  title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
+                />
+                {isActive && <ToolCallsOverlay />}
+              </div>
+            ) : (
+              <iframe
+                src={svc.url}
+                className="w-full h-full border-0 bg-white"
+                title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
+              />
+            )}
+          </div>
+        );
+      })}
+
       <div className="absolute top-1 right-1 flex gap-0.5 bg-background/80 backdrop-blur-sm rounded p-0.5 z-10">
         {splitModeOptions.map((opt) => (
           <button
@@ -1064,8 +1079,11 @@ export const TskPane: FC<TskPaneProps> = ({
               );
             })}
 
-            {/* Split view */}
-            {viewMode === "split" && (
+            {/* Split view — stays mounted */}
+            <div
+              className="absolute inset-0"
+              style={{ display: viewMode === "split" ? "block" : "none" }}
+            >
               <div className="grid grid-cols-2 h-full">
                 <SplitPane
                   mode={splitLeft}
@@ -1088,7 +1106,7 @@ export const TskPane: FC<TskPaneProps> = ({
                   displayConfig={displayConfig}
                 />
               </div>
-            )}
+            </div>
 
             {/* Terminal — stays mounted, visibility controlled by prop */}
             {task.container_id && (
