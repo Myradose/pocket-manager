@@ -137,7 +137,59 @@ export const XTerminal: FC<XTerminalProps> = ({
     });
     resizeObserver.observe(container);
 
+    // --- Granular scroll → tmux line scroll ---
+    // Browser wheel events carry pixel-level deltaY. Accumulate that delta
+    // and forward one mouse-wheel event to xterm.js (→ tmux) each time the
+    // accumulator crosses a line threshold. Pair with tmux `send -N1`.
+    const LINE_PX_THRESHOLD = 15;
+    const SCROLL_FRICTION = 0.5;
+    let scrollDelta = 0;
+    let isSyntheticWheel = false;
+    const screenEl = container.querySelector(".xterm-screen");
+
+    const onWheel = (e: WheelEvent) => {
+      if (isSyntheticWheel) return;
+      if (displacedRef.current) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const dy =
+        e.deltaMode === WheelEvent.DOM_DELTA_LINE
+          ? e.deltaY * LINE_PX_THRESHOLD
+          : e.deltaY;
+
+      // Decay residual momentum before adding new delta —
+      // trailing momentum events compound on a shrinking accumulator,
+      // so scrolling decelerates faster at the end of a gesture.
+      scrollDelta *= SCROLL_FRICTION;
+      scrollDelta += dy;
+
+      while (Math.abs(scrollDelta) >= LINE_PX_THRESHOLD && screenEl) {
+        const dir = Math.sign(scrollDelta);
+        scrollDelta -= dir * LINE_PX_THRESHOLD;
+
+        isSyntheticWheel = true;
+        screenEl.dispatchEvent(
+          new WheelEvent("wheel", {
+            deltaY: dir * 100,
+            deltaMode: WheelEvent.DOM_DELTA_PIXEL,
+            clientX: e.clientX,
+            clientY: e.clientY,
+            bubbles: true,
+            cancelable: true,
+          }),
+        );
+        isSyntheticWheel = false;
+      }
+    };
+
+    container.addEventListener("wheel", onWheel, {
+      capture: true,
+      passive: false,
+    });
+
     return () => {
+      container.removeEventListener("wheel", onWheel, { capture: true });
       resizeObserver.disconnect();
       container.classList.remove("terminal-container--visible");
       terminal.dispose();
