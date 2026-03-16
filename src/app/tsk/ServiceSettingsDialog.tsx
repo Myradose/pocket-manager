@@ -237,110 +237,158 @@ export const ServiceSettingsDialog: FC<ServiceSettingsDialogProps> = ({
             No services discovered. Services will appear when tasks are running.
           </p>
         ) : (
-          <div className="space-y-1 max-h-80 overflow-y-auto scrollbar-thin">
-            {orderedKeys.map((key, index) => {
-              const cfg = localConfig[key] ?? defaultConfigForKey(key);
-              const isDragging = dragIndex === index;
-              const isDragOver = dragOverIndex === index;
-              return (
-                <div
-                  key={key}
-                  draggable
-                  onDragStart={() => handleDragStart(index)}
-                  onDragOver={(e) => handleDragOver(e, index)}
-                  onDrop={() => handleDrop(index)}
-                  onDragEnd={handleDragEnd}
-                  className={`border rounded p-3 space-y-2 text-sm transition-all ${
-                    isDragging ? "opacity-40" : ""
-                  } ${isDragOver ? "border-primary border-dashed" : ""}`}
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2 font-medium">
-                      <GripVertical className="w-3 h-3 text-muted-foreground cursor-grab shrink-0" />
-                      <ServiceIcon name={cfg.icon} />
-                      <code className="text-xs bg-muted px-1 rounded">
-                        {key}
-                      </code>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleResetKey(key)}
-                        className="p-1 rounded hover:bg-muted text-muted-foreground"
-                        title="Reset to defaults"
-                      >
-                        <RotateCcw className="w-3 h-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          updateField(key, "visible", !cfg.visible)
-                        }
-                        className={`p-1 rounded hover:bg-muted ${cfg.visible ? "text-foreground" : "text-muted-foreground/40"}`}
-                        title={cfg.visible ? "Hide service" : "Show service"}
-                      >
-                        {cfg.visible ? (
-                          <Eye className="w-3.5 h-3.5" />
-                        ) : (
-                          <EyeOff className="w-3.5 h-3.5" />
-                        )}
-                      </button>
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <div>
-                      <label
-                        htmlFor={`svc-label-${key}`}
-                        className="text-xs text-muted-foreground"
-                      >
-                        Label
-                      </label>
-                      <input
-                        id={`svc-label-${key}`}
-                        type="text"
-                        value={cfg.label}
-                        onChange={(e) =>
-                          updateField(key, "label", e.target.value)
-                        }
-                        className="w-full px-2 py-1 rounded border bg-background text-sm"
-                      />
-                    </div>
-                    <div>
-                      <label
-                        htmlFor={`svc-icon-${key}`}
-                        className="text-xs text-muted-foreground"
-                      >
-                        Icon
-                      </label>
-                      <IconPicker
-                        id={`svc-icon-${key}`}
-                        value={cfg.icon}
-                        onChange={(icon) => updateField(key, "icon", icon)}
-                      />
-                    </div>
-                    <div>
-                      <label
-                        htmlFor={`svc-embed-${key}`}
-                        className="text-xs text-muted-foreground"
-                      >
-                        Embed Type
-                      </label>
-                      <select
-                        id={`svc-embed-${key}`}
-                        value={cfg.embedType}
-                        onChange={(e) =>
-                          updateField(key, "embedType", e.target.value)
-                        }
-                        className="w-full px-2 py-1 rounded border bg-background text-sm"
-                      >
-                        <option value="iframe">iframe</option>
-                        <option value="vnc">vnc</option>
-                      </select>
-                    </div>
-                  </div>
-                </div>
+          <div className="max-h-80 overflow-y-auto scrollbar-thin">
+            {(() => {
+              const visibleKeys = orderedKeys.filter(
+                (k) => localConfig[k]?.visible !== false,
               );
-            })}
+              const hiddenKeys = orderedKeys.filter(
+                (k) => localConfig[k]?.visible === false,
+              );
+
+              const renderCard = (key: string, dragEnabled: boolean) => {
+                const cfg = localConfig[key] ?? defaultConfigForKey(key);
+                const globalIndex = orderedKeys.indexOf(key);
+                const isDragging = dragEnabled && dragIndex === globalIndex;
+                const isDragOver = dragEnabled && dragOverIndex === globalIndex;
+                return (
+                  <div
+                    key={key}
+                    draggable={dragEnabled}
+                    onDragStart={
+                      dragEnabled
+                        ? () => handleDragStart(globalIndex)
+                        : undefined
+                    }
+                    onDragOver={
+                      dragEnabled
+                        ? (e) => handleDragOver(e, globalIndex)
+                        : undefined
+                    }
+                    onDrop={
+                      dragEnabled ? () => handleDrop(globalIndex) : undefined
+                    }
+                    onDragEnd={dragEnabled ? handleDragEnd : undefined}
+                    className={`border rounded p-3 space-y-2 text-sm transition-all ${
+                      isDragging ? "opacity-40" : ""
+                    } ${isDragOver ? "border-primary border-dashed" : ""} ${
+                      !cfg.visible ? "opacity-60" : ""
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2 font-medium">
+                        {dragEnabled ? (
+                          <GripVertical className="w-3 h-3 text-muted-foreground cursor-grab shrink-0" />
+                        ) : (
+                          <div className="w-3" />
+                        )}
+                        <ServiceIcon name={cfg.icon} />
+                        <code className="text-xs bg-muted px-1 rounded">
+                          {key}
+                        </code>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => handleResetKey(key)}
+                          className="p-1 rounded hover:bg-muted text-muted-foreground"
+                          title="Reset to defaults"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            updateField(key, "visible", !cfg.visible)
+                          }
+                          className={`p-1 rounded hover:bg-muted ${cfg.visible ? "text-foreground" : "text-muted-foreground/40"}`}
+                          title={cfg.visible ? "Hide service" : "Show service"}
+                        >
+                          {cfg.visible ? (
+                            <Eye className="w-3.5 h-3.5" />
+                          ) : (
+                            <EyeOff className="w-3.5 h-3.5" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <label
+                          htmlFor={`svc-label-${key}`}
+                          className="text-xs text-muted-foreground"
+                        >
+                          Label
+                        </label>
+                        <input
+                          id={`svc-label-${key}`}
+                          type="text"
+                          value={cfg.label}
+                          onChange={(e) =>
+                            updateField(key, "label", e.target.value)
+                          }
+                          className="w-full px-2 py-1 rounded border bg-background text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor={`svc-icon-${key}`}
+                          className="text-xs text-muted-foreground"
+                        >
+                          Icon
+                        </label>
+                        <IconPicker
+                          id={`svc-icon-${key}`}
+                          value={cfg.icon}
+                          onChange={(icon) => updateField(key, "icon", icon)}
+                        />
+                      </div>
+                      <div>
+                        <label
+                          htmlFor={`svc-embed-${key}`}
+                          className="text-xs text-muted-foreground"
+                        >
+                          Embed Type
+                        </label>
+                        <select
+                          id={`svc-embed-${key}`}
+                          value={cfg.embedType}
+                          onChange={(e) =>
+                            updateField(key, "embedType", e.target.value)
+                          }
+                          className="w-full px-2 py-1 rounded border bg-background text-sm"
+                        >
+                          <option value="iframe">iframe</option>
+                          <option value="vnc">vnc</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                );
+              };
+
+              return (
+                <>
+                  <div className="space-y-1">
+                    {visibleKeys.map((key) => renderCard(key, true))}
+                  </div>
+                  {hiddenKeys.length > 0 && (
+                    <>
+                      <div className="flex items-center gap-2 py-2 px-1">
+                        <div className="flex-1 border-t" />
+                        <span className="text-xs text-muted-foreground shrink-0">
+                          Hidden
+                        </span>
+                        <div className="flex-1 border-t" />
+                      </div>
+                      <div className="space-y-1">
+                        {hiddenKeys.map((key) => renderCard(key, false))}
+                      </div>
+                    </>
+                  )}
+                </>
+              );
+            })()}
           </div>
         )}
         <DialogFooter>
