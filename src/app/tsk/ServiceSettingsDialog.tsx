@@ -237,7 +237,7 @@ export const ServiceSettingsDialog: FC<ServiceSettingsDialogProps> = ({
             No services discovered. Services will appear when tasks are running.
           </p>
         ) : (
-          <div className="max-h-80 overflow-y-auto scrollbar-thin">
+          <div className="max-h-80 overflow-y-auto scrollbar-thin pr-2">
             {(() => {
               const visibleKeys = orderedKeys.filter(
                 (k) => localConfig[k]?.visible !== false,
