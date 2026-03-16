@@ -1,5 +1,6 @@
 import { Effect, Layer } from "effect";
 import { describe, expect, test } from "vitest";
+import { ServiceDisplayConfigService } from "../services/ServiceDisplayConfigService";
 import { TskService } from "../services/TskService";
 import { TskController } from "./TskController";
 
@@ -16,8 +17,14 @@ const mockTskServiceLayer = Layer.mock(TskService, {
         created_at: "2026-01-01T00:00:00Z",
         started_at: "2026-01-01T00:00:01Z",
         transcripts_dir: "/tmp/tasks/hash-task1/transcripts",
-        frontend_url: "http://test-task-task1.localhost:8080/",
-        vnc_url: "http://test-task-task1.localhost:8080/vnc",
+        services: [
+          {
+            key: "frontend",
+            url: "http://task1.localhost:8080/",
+            port: 4200,
+            path: "/",
+          },
+        ],
       },
     ]),
   getTaskTranscript: () =>
@@ -30,7 +37,15 @@ const mockTskServiceLayer = Layer.mock(TskService, {
   continueTask: () => Effect.succeed({ id: "task1", status: "QUEUED" }),
 });
 
-const testLayer = TskController.Live.pipe(Layer.provide(mockTskServiceLayer));
+const mockServiceDisplayConfigLayer = Layer.mock(ServiceDisplayConfigService, {
+  getConfig: () => Effect.succeed(null),
+  saveConfig: () => Effect.succeed(undefined),
+});
+
+const testLayer = TskController.Live.pipe(
+  Layer.provide(mockTskServiceLayer),
+  Layer.provide(mockServiceDisplayConfigLayer),
+);
 
 describe("TskController", () => {
   test("listTasks returns 200 with tasks", async () => {

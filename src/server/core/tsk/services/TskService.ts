@@ -38,6 +38,17 @@ const getTskApiPort = () =>
     return 7354;
   });
 
+const getTraefikPort = () =>
+  Effect.sync(() => {
+    // biome-ignore lint/style/noProcessEnv: TRAEFIK_PORT is not in EnvSchema
+    const portStr = process.env.TRAEFIK_PORT;
+    if (portStr) {
+      const parsed = parseInt(portStr, 10);
+      if (!Number.isNaN(parsed)) return parsed;
+    }
+    return 8080;
+  });
+
 const LayerImpl = Effect.gen(function* () {
   const listTasks = (options?: { repo?: string }) =>
     Effect.tryPromise({
@@ -70,7 +81,7 @@ const LayerImpl = Effect.gen(function* () {
           }),
         );
 
-        const traefikPort = 8080;
+        const traefikPort = await Effect.runPromise(getTraefikPort());
 
         return tasks.map((task): TskTaskResponse => {
           const repoInfo = repoInfoCache.get(task.repo_root);
@@ -78,31 +89,21 @@ const LayerImpl = Effect.gen(function* () {
           const submodules = repoInfo?.submodules ?? [];
 
           const hostname = task.serve_hostname;
-          let frontendUrl: string | undefined;
-          let vncUrl: string | undefined;
-
-          if (hostname) {
-            const frontendService = services.frontend ?? services.web;
-            if (frontendService) {
-              const displayPath =
-                frontendService.url ?? frontendService.path ?? "/";
-              frontendUrl = `http://${hostname}.localhost:${traefikPort}${displayPath}`;
-            }
-
-            const vncService = services.vnc;
-            if (vncService) {
-              const displayPath = vncService.url ?? vncService.path ?? "/vnc";
-              vncUrl = `http://${hostname}.localhost:${traefikPort}${displayPath}`;
-            }
-          }
+          const resolvedServices = hostname
+            ? Object.entries(services).map(([key, config]) => ({
+                key,
+                url: `http://${hostname}.localhost:${traefikPort}${config.url ?? config.path ?? "/"}`,
+                port: config.port,
+                path: config.path,
+              }))
+            : [];
 
           return {
             ...task,
             transcripts_dir: task.task_dir
               ? `${task.task_dir}/transcripts`
               : "",
-            frontend_url: frontendUrl,
-            vnc_url: vncUrl,
+            services: resolvedServices,
             submodules: submodules.length > 0 ? submodules : undefined,
           };
         });

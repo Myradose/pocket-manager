@@ -36,6 +36,7 @@ import { TerminalController } from "./core/terminal/presentation/TerminalControl
 import { TerminalCleanupService } from "./core/terminal/services/TerminalCleanupService";
 import { TerminalSessionService } from "./core/terminal/services/TerminalSessionService";
 import { TskController } from "./core/tsk/presentation/TskController";
+import { ServiceDisplayConfigService } from "./core/tsk/services/ServiceDisplayConfigService";
 import { TskService } from "./core/tsk/services/TskService";
 import { honoApp, injectWebSocket } from "./hono/app";
 import { InitializeService } from "./hono/initialize";
@@ -104,6 +105,7 @@ export const startServer = async (options: CliOptions) => {
       Effect.provide(SchedulerConfigBaseDir.Live),
       Effect.provide(SearchService.Live),
       Effect.provide(TskService.Live),
+      Effect.provide(ServiceDisplayConfigService.Live),
       Effect.provide(TerminalCleanupService.Live),
       Effect.provide(TerminalSessionService.Live),
     )

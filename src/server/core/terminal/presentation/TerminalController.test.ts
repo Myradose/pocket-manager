@@ -18,8 +18,20 @@ const mockTskServiceLayer = Layer.mock(TskService, {
         started_at: "2026-01-01T00:00:01Z",
         container_id: "abc123container",
         transcripts_dir: "/tmp/tasks/hash-task1/transcripts",
-        frontend_url: "http://test.localhost:8080/",
-        vnc_url: "http://test.localhost:8080/vnc",
+        services: [
+          {
+            key: "frontend",
+            url: "http://test.localhost:8080/",
+            port: 4200,
+            path: "/",
+          },
+          {
+            key: "vnc",
+            url: "http://test.localhost:8080/vnc",
+            port: 6080,
+            path: "/vnc",
+          },
+        ],
       },
     ]),
   getTaskTranscript: () => Effect.succeed({ conversations: [] }),

@@ -67,12 +67,20 @@ describe("TskService", () => {
       expect(task.transcripts_dir).toBe(
         "/tmp/tasks/hash-pliable-klipspringer/transcripts",
       );
-      expect(task.frontend_url).toBe(
-        "http://pliable-klipspringer.localhost:8080/",
-      );
-      expect(task.vnc_url).toBe(
-        "http://pliable-klipspringer.localhost:8080/vnc",
-      );
+      expect(task.services).toEqual([
+        {
+          key: "frontend",
+          url: "http://pliable-klipspringer.localhost:8080/",
+          port: 4200,
+          path: "/",
+        },
+        {
+          key: "vnc",
+          url: "http://pliable-klipspringer.localhost:8080/vnc",
+          port: 6080,
+          path: "/vnc",
+        },
+      ]);
       expect(task.submodules).toEqual(["libs/core"]);
     });
 
@@ -131,8 +139,7 @@ describe("TskService", () => {
       const task = result[0];
       expect(task).toBeDefined();
       if (!task) return;
-      expect(task.frontend_url).toBeUndefined();
-      expect(task.vnc_url).toBeUndefined();
+      expect(task.services).toEqual([]);
       expect(task.transcripts_dir).toBe("");
     });
   });

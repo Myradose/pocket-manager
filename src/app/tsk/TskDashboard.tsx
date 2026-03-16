@@ -4,13 +4,12 @@ import {
   ArrowLeft,
   ChevronDown,
   ChevronRight,
-  ExternalLink,
   Focus,
   FolderOpen,
   Loader2,
   MessageSquare,
-  Monitor,
   Play,
+  Settings,
   SquareTerminal,
   Trash2,
   X,
@@ -27,11 +26,15 @@ import {
 import { CreateTaskDialog } from "./CreateTaskDialog";
 import { EditableTaskName } from "./EditableTaskName";
 import {
+  type ServiceDisplayConfig,
   type TskTask,
+  tskServiceDisplayConfigQuery,
   tskTasksQuery,
   useContinueTskTask,
   useDeleteTskTask,
 } from "./queries";
+import { defaultServiceLabel, ServiceIcon } from "./ServiceIcon";
+import { ServiceSettingsDialog } from "./ServiceSettingsDialog";
 import { TskPane } from "./TskPane";
 import { useWorkspacePath } from "./useWorkspacePath";
 
@@ -39,7 +42,7 @@ type TskDashboardProps = {
   taskIds: string[];
 };
 
-type GridViewMode = "conversation" | "frontend" | "vnc" | "terminal";
+type GridViewMode = "conversation" | "terminal" | `service:${string}`;
 
 const GRID_CELL_MIN_HEIGHT = 320;
 
@@ -214,6 +217,17 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
   // Stopped tasks strip collapsed state
   const [stoppedCollapsed, setStoppedCollapsed] = useState(true);
 
+  // Service settings dialog
+  const [showServiceSettings, setShowServiceSettings] = useState(false);
+
+  // Fetch service display config
+  const { data: serviceDisplayConfig } = useQuery({
+    ...tskServiceDisplayConfigQuery(workspacePath || ""),
+    enabled: !!workspacePath,
+  });
+  const displayConfig: Record<string, ServiceDisplayConfig> =
+    serviceDisplayConfig ?? {};
+
   // Update a single task's view mode
   const setTaskViewMode = useCallback((taskId: string, mode: GridViewMode) => {
     setTaskViewModes((prev) => ({ ...prev, [taskId]: mode }));
@@ -301,6 +315,21 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
     }
     return activeTasks;
   }, [activeTasks, isFocusMode, selectedTaskIds]);
+
+  // Compute union of all service keys across active tasks, sorted by display config order
+  const allServiceKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const t of tasks) {
+      for (const s of t.services) {
+        keys.add(s.key);
+      }
+    }
+    return [...keys].sort((a, b) => {
+      const orderA = displayConfig[a]?.order ?? 0;
+      const orderB = displayConfig[b]?.order ?? 0;
+      return orderA - orderB;
+    });
+  }, [tasks, displayConfig]);
 
   // Show popup when there's only 1 active task and user hasn't dismissed it
   useEffect(() => {
@@ -439,14 +468,8 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
   const getGlobalState = (): GridViewMode | "mixed" => {
     if (tasks.length === 0) return "terminal";
     const modes = tasks.map((t) => taskViewModes[t.id] ?? "terminal");
-    const allConversation = modes.every((m) => m === "conversation");
-    const allFrontend = modes.every((m) => m === "frontend");
-    const allVnc = modes.every((m) => m === "vnc");
-    const allTerminal = modes.every((m) => m === "terminal");
-    if (allConversation) return "conversation";
-    if (allFrontend) return "frontend";
-    if (allVnc) return "vnc";
-    if (allTerminal) return "terminal";
+    const first = modes[0];
+    if (first && modes.every((m) => m === first)) return first;
     return "mixed";
   };
 
@@ -503,6 +526,7 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
             onAutoScrollChange={(auto) =>
               setTaskAutoScrollState(detailTask.id, auto)
             }
+            displayConfig={displayConfig}
           />
         </div>
       </div>
@@ -604,30 +628,26 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
             <MessageSquare className="w-3 h-3" />
             Conversation
           </button>
-          <button
-            type="button"
-            onClick={() => setAllTasksViewMode("frontend")}
-            className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
-              globalState === "frontend"
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted"
-            }`}
-          >
-            <ExternalLink className="w-3 h-3" />
-            Frontend
-          </button>
-          <button
-            type="button"
-            onClick={() => setAllTasksViewMode("vnc")}
-            className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
-              globalState === "vnc"
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted"
-            }`}
-          >
-            <Monitor className="w-3 h-3" />
-            VNC
-          </button>
+          {allServiceKeys.map((key) => {
+            const cfg = displayConfig[key];
+            if (cfg && !cfg.visible) return null;
+            const svcMode: GridViewMode = `service:${key}`;
+            return (
+              <button
+                key={key}
+                type="button"
+                onClick={() => setAllTasksViewMode(svcMode)}
+                className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
+                  globalState === svcMode
+                    ? "bg-primary text-primary-foreground"
+                    : "hover:bg-muted"
+                }`}
+              >
+                <ServiceIcon name={cfg?.icon ?? "ExternalLink"} />
+                {cfg?.label ?? defaultServiceLabel(key)}
+              </button>
+            );
+          })}
           <span className="text-muted-foreground mx-2">|</span>
           <button
             type="button"
@@ -641,6 +661,14 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
           >
             <MessageSquare className="w-3 h-3" />
             Tools
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowServiceSettings(true)}
+            className="p-1.5 rounded hover:bg-muted"
+            title="Service display settings"
+          >
+            <Settings className="w-3 h-3" />
           </button>
         </div>
       </div>
@@ -705,6 +733,7 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
               onAutoScrollChange={(auto) =>
                 setTaskAutoScrollState(task.id, auto)
               }
+              displayConfig={displayConfig}
             />
           ))}
         </div>
@@ -733,6 +762,16 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
             </div>
           )}
         </div>
+      )}
+
+      {workspacePath && (
+        <ServiceSettingsDialog
+          open={showServiceSettings}
+          onOpenChange={setShowServiceSettings}
+          workspacePath={workspacePath}
+          allServiceKeys={allServiceKeys}
+          displayConfig={displayConfig}
+        />
       )}
     </div>
   );

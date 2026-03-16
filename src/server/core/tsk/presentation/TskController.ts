@@ -1,11 +1,13 @@
 import { Context, Effect, Either, Layer } from "effect";
 import type { ControllerResponse } from "../../../lib/effect/toEffectResponse";
 import type { InferEffect } from "../../../lib/effect/types";
-import type { CreateTaskRequest } from "../schema";
+import type { CreateTaskRequest, ServiceDisplayConfig } from "../schema";
+import { ServiceDisplayConfigService } from "../services/ServiceDisplayConfigService";
 import { TskService } from "../services/TskService";
 
 const LayerImpl = Effect.gen(function* () {
   const tskService = yield* TskService;
+  const serviceDisplayConfigService = yield* ServiceDisplayConfigService;
 
   const listTasks = (options?: { repo?: string }) =>
     Effect.gen(function* () {
@@ -140,6 +142,40 @@ const LayerImpl = Effect.gen(function* () {
       } as const satisfies ControllerResponse;
     });
 
+  const getServiceDisplayConfig = (options: { projectPath: string }) =>
+    Effect.gen(function* () {
+      const config = yield* serviceDisplayConfigService.getConfig(
+        options.projectPath,
+      );
+      return {
+        status: 200,
+        response: { services: config },
+      } as const satisfies ControllerResponse;
+    });
+
+  const updateServiceDisplayConfig = (options: {
+    projectPath: string;
+    services: Record<string, ServiceDisplayConfig>;
+  }) =>
+    Effect.gen(function* () {
+      const result = yield* Effect.either(
+        serviceDisplayConfigService.saveConfig(
+          options.projectPath,
+          options.services,
+        ),
+      );
+      if (Either.isLeft(result)) {
+        return {
+          status: 500,
+          response: { error: "Failed to save service display config" },
+        } as const satisfies ControllerResponse;
+      }
+      return {
+        status: 200,
+        response: { success: true },
+      } as const satisfies ControllerResponse;
+    });
+
   return {
     listTasks,
     getTaskTranscript,
@@ -150,6 +186,8 @@ const LayerImpl = Effect.gen(function* () {
     renameTask,
     suggestName,
     openPath,
+    getServiceDisplayConfig,
+    updateServiceDisplayConfig,
   };
 });
 

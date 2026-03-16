@@ -7,12 +7,10 @@ import {
   Code,
   Columns2,
   Copy,
-  ExternalLink,
   FolderOpen,
   Info,
   Loader2,
   MessageSquare,
-  Monitor,
   Play,
   Square,
   SquareTerminal,
@@ -36,7 +34,7 @@ import {
 } from "@/components/ui/dialog";
 import { ConversationList } from "../projects/[projectId]/sessions/[sessionId]/components/conversationList/ConversationList";
 import { EditableTaskName } from "./EditableTaskName";
-import type { TskTask } from "./queries";
+import type { ServiceDisplayConfig, TskTask } from "./queries";
 import {
   tskTranscriptQuery,
   useContinueTskTask,
@@ -44,15 +42,11 @@ import {
   useOpenPath,
   useStopTskTask,
 } from "./queries";
+import { defaultServiceLabel, ServiceIcon } from "./ServiceIcon";
 import { TerminalPanel } from "./terminal/TerminalPanel";
 
-type GridViewMode = "conversation" | "frontend" | "vnc" | "terminal";
-type DetailViewMode =
-  | "conversation"
-  | "frontend"
-  | "vnc"
-  | "split"
-  | "terminal";
+type GridViewMode = "conversation" | "terminal" | `service:${string}`;
+type DetailViewMode = GridViewMode | "split";
 
 type TskPaneProps = {
   task: TskTask;
@@ -71,6 +65,8 @@ type TskPaneProps = {
   onScrollPositionChange?: (position: number) => void;
   initialAutoScroll?: boolean;
   onAutoScrollChange?: (autoScroll: boolean) => void;
+  // Service display config from settings
+  displayConfig?: Record<string, ServiceDisplayConfig>;
 };
 
 // Extract recent tool calls from conversations
@@ -143,17 +139,6 @@ const formatRelativeTime = (dateString: string | null): string => {
   return date.toLocaleDateString();
 };
 
-const splitModeOptions: {
-  mode: GridViewMode;
-  icon: typeof SquareTerminal;
-  label: string;
-}[] = [
-  { mode: "terminal", icon: SquareTerminal, label: "Terminal" },
-  { mode: "conversation", icon: MessageSquare, label: "Conversation" },
-  { mode: "frontend", icon: ExternalLink, label: "Frontend" },
-  { mode: "vnc", icon: Monitor, label: "VNC" },
-];
-
 const SplitPane: FC<{
   mode: GridViewMode;
   onModeChange: (mode: GridViewMode) => void;
@@ -163,6 +148,7 @@ const SplitPane: FC<{
   getToolResult: () => undefined;
   ToolCallsOverlay: FC;
   side: "left" | "right";
+  displayConfig?: Record<string, ServiceDisplayConfig>;
 }> = ({
   mode,
   onModeChange,
@@ -171,67 +157,99 @@ const SplitPane: FC<{
   getToolResult,
   ToolCallsOverlay,
   side,
+  displayConfig = {},
 }) => {
   const borderClass = side === "left" ? "border-r" : "";
 
+  const splitModeOptions = useMemo(() => {
+    const opts: { mode: GridViewMode; iconName: string; label: string }[] = [
+      { mode: "terminal", iconName: "Terminal", label: "Terminal" },
+      {
+        mode: "conversation",
+        iconName: "MessageSquare",
+        label: "Conversation",
+      },
+    ];
+    const sorted = [...task.services].sort((a, b) => {
+      const oA = displayConfig[a.key]?.order ?? 0;
+      const oB = displayConfig[b.key]?.order ?? 0;
+      return oA - oB;
+    });
+    for (const svc of sorted) {
+      const cfg = displayConfig[svc.key];
+      if (cfg && !cfg.visible) continue;
+      opts.push({
+        mode: `service:${svc.key}`,
+        iconName: cfg?.icon ?? "ExternalLink",
+        label: cfg?.label ?? defaultServiceLabel(svc.key),
+      });
+    }
+    return opts;
+  }, [task.services, displayConfig]);
+
   const content = (() => {
-    switch (mode) {
-      case "conversation":
+    if (mode === "conversation") {
+      return (
+        <div className="h-full overflow-auto p-2">
+          {conversations.length > 0 ? (
+            <ConversationList
+              conversations={conversations}
+              getToolResult={getToolResult}
+              projectId={task.id}
+              sessionId={task.id}
+              scheduledJobs={[]}
+            />
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <p className="text-muted-foreground text-sm">
+                Waiting for agent output...
+              </p>
+            </div>
+          )}
+        </div>
+      );
+    }
+    if (mode === "terminal") {
+      return task.container_id ? (
+        <TerminalPanel taskId={task.id} visible />
+      ) : (
+        <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
+          No container
+        </div>
+      );
+    }
+    if (mode.startsWith("service:")) {
+      const key = mode.slice(8);
+      const svc = task.services.find((s) => s.key === key);
+      const cfg = displayConfig[key];
+      if (!svc) {
         return (
-          <div className="h-full overflow-auto p-2">
-            {conversations.length > 0 ? (
-              <ConversationList
-                conversations={conversations}
-                getToolResult={getToolResult}
-                projectId={task.id}
-                sessionId={task.id}
-                scheduledJobs={[]}
-              />
-            ) : (
-              <div className="flex items-center justify-center h-full">
-                <p className="text-muted-foreground text-sm">
-                  Waiting for agent output...
-                </p>
-              </div>
-            )}
-          </div>
-        );
-      case "frontend":
-        return task.frontend_url ? (
-          <iframe
-            src={task.frontend_url}
-            className="w-full h-full border-0 bg-white"
-            title={`${task.name} frontend`}
-          />
-        ) : (
           <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-            No frontend URL
+            Service not available
           </div>
         );
-      case "vnc":
-        return task.vnc_url ? (
+      }
+      if (cfg?.embedType === "vnc") {
+        return (
           <div className="relative h-full">
             <iframe
-              src={task.vnc_url}
+              src={svc.url}
               className="w-full h-full border-0"
-              title={`${task.name} VNC`}
+              title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
             />
             <ToolCallsOverlay />
           </div>
-        ) : (
-          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-            No VNC URL
-          </div>
         );
-      case "terminal":
-        return task.container_id ? (
-          <TerminalPanel taskId={task.id} visible />
-        ) : (
-          <div className="flex items-center justify-center h-full text-muted-foreground text-sm">
-            No container
-          </div>
-        );
+      }
+      return (
+        <iframe
+          src={svc.url}
+          className="w-full h-full border-0 bg-white"
+          title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
+        />
+      );
     }
+    return null;
   })();
 
   return (
@@ -246,7 +264,13 @@ const SplitPane: FC<{
             className={`p-1 rounded ${mode === opt.mode ? "bg-muted" : "hover:bg-muted/50"}`}
             title={opt.label}
           >
-            <opt.icon className="w-3 h-3" />
+            {opt.mode === "conversation" ? (
+              <MessageSquare className="w-3 h-3" />
+            ) : opt.mode === "terminal" ? (
+              <SquareTerminal className="w-3 h-3" />
+            ) : (
+              <ServiceIcon name={opt.iconName} />
+            )}
           </button>
         ))}
       </div>
@@ -267,7 +291,19 @@ export const TskPane: FC<TskPaneProps> = ({
   onScrollPositionChange,
   initialAutoScroll,
   onAutoScrollChange,
+  displayConfig = {},
 }) => {
+  // Services sorted by display config order
+  const sortedServices = useMemo(
+    () =>
+      [...task.services].sort((a, b) => {
+        const orderA = displayConfig[a.key]?.order ?? 0;
+        const orderB = displayConfig[b.key]?.order ?? 0;
+        return orderA - orderB;
+      }),
+    [task.services, displayConfig],
+  );
+
   const deleteTask = useDeleteTskTask();
   const stopTask = useStopTskTask();
   const continueTask = useContinueTskTask();
@@ -309,7 +345,7 @@ export const TskPane: FC<TskPaneProps> = ({
   // Track if split mode is active (detail view only feature)
   const [isSplitMode, setIsSplitMode] = useState(false);
   const [splitLeft, setSplitLeft] = useState<GridViewMode>("terminal");
-  const [splitRight, setSplitRight] = useState<GridViewMode>("frontend");
+  const [splitRight, setSplitRight] = useState<GridViewMode>("conversation");
   const [showInfo, setShowInfo] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -340,8 +376,7 @@ export const TskPane: FC<TskPaneProps> = ({
     if (
       isStopped &&
       (controlledViewMode === "terminal" ||
-        controlledViewMode === "frontend" ||
-        controlledViewMode === "vnc")
+        controlledViewMode.startsWith("service:"))
     ) {
       onViewModeChange?.("conversation");
     }
@@ -381,16 +416,20 @@ export const TskPane: FC<TskPaneProps> = ({
 
   const handleSplitMode = () => {
     if (!isSplitMode) {
-      // Set defaults: prefer frontend+vnc, fall back to terminal+frontend, etc.
-      if (task.frontend_url && task.vnc_url) {
-        setSplitLeft("frontend");
-        setSplitRight("vnc");
-      } else if (task.frontend_url) {
+      const visibleServices = sortedServices.filter((s) => {
+        const cfg = displayConfig[s.key];
+        return !cfg || cfg.visible;
+      });
+      if (
+        visibleServices.length >= 2 &&
+        visibleServices[0] &&
+        visibleServices[1]
+      ) {
+        setSplitLeft(`service:${visibleServices[0].key}`);
+        setSplitRight(`service:${visibleServices[1].key}`);
+      } else if (visibleServices.length === 1 && visibleServices[0]) {
         setSplitLeft("terminal");
-        setSplitRight("frontend");
-      } else if (task.vnc_url) {
-        setSplitLeft("terminal");
-        setSplitRight("vnc");
+        setSplitRight(`service:${visibleServices[0].key}`);
       } else {
         setSplitLeft("terminal");
         setSplitRight("conversation");
@@ -593,7 +632,7 @@ export const TskPane: FC<TskPaneProps> = ({
           </button>
           <span className="text-muted-foreground mx-1">|</span>
           {isGridView ? (
-            /* Grid view: terminal/conversation/frontend/VNC toggle */
+            /* Grid view: terminal/conversation/services toggle */
             <>
               {!isStopped &&
                 (task.status === "SERVING" || task.status === "RUNNING") &&
@@ -615,26 +654,26 @@ export const TskPane: FC<TskPaneProps> = ({
               >
                 <MessageSquare className="w-4 h-4" />
               </button>
-              {!isStopped && task.frontend_url && (
-                <button
-                  type="button"
-                  onClick={() => handleViewModeChange("frontend")}
-                  className={`p-1.5 rounded hover:bg-muted ${viewMode === "frontend" ? "bg-muted" : ""}`}
-                  title="Show frontend"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                </button>
-              )}
-              {!isStopped && task.vnc_url && (
-                <button
-                  type="button"
-                  onClick={() => handleViewModeChange("vnc")}
-                  className={`p-1.5 rounded hover:bg-muted ${viewMode === "vnc" ? "bg-muted" : ""}`}
-                  title="Show VNC"
-                >
-                  <Monitor className="w-4 h-4" />
-                </button>
-              )}
+              {!isStopped &&
+                sortedServices.map((svc) => {
+                  const cfg = displayConfig[svc.key];
+                  if (cfg && !cfg.visible) return null;
+                  const svcMode: GridViewMode = `service:${svc.key}`;
+                  return (
+                    <button
+                      key={svc.key}
+                      type="button"
+                      onClick={() => handleViewModeChange(svcMode)}
+                      className={`p-1.5 rounded hover:bg-muted ${viewMode === svcMode ? "bg-muted" : ""}`}
+                      title={cfg?.label ?? defaultServiceLabel(svc.key)}
+                    >
+                      <ServiceIcon
+                        name={cfg?.icon ?? "ExternalLink"}
+                        className="w-4 h-4"
+                      />
+                    </button>
+                  );
+                })}
             </>
           ) : (
             /* Detail view: all options including split */
@@ -659,26 +698,26 @@ export const TskPane: FC<TskPaneProps> = ({
               >
                 <MessageSquare className="w-4 h-4" />
               </button>
-              {!isStopped && task.frontend_url && (
-                <button
-                  type="button"
-                  onClick={() => handleViewModeChange("frontend")}
-                  className={`p-1.5 rounded hover:bg-muted ${viewMode === "frontend" ? "bg-muted" : ""}`}
-                  title="Show frontend"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                </button>
-              )}
-              {!isStopped && task.vnc_url && (
-                <button
-                  type="button"
-                  onClick={() => handleViewModeChange("vnc")}
-                  className={`p-1.5 rounded hover:bg-muted ${viewMode === "vnc" ? "bg-muted" : ""}`}
-                  title="Show VNC"
-                >
-                  <Monitor className="w-4 h-4" />
-                </button>
-              )}
+              {!isStopped &&
+                sortedServices.map((svc) => {
+                  const cfg = displayConfig[svc.key];
+                  if (cfg && !cfg.visible) return null;
+                  const svcMode: GridViewMode = `service:${svc.key}`;
+                  return (
+                    <button
+                      key={svc.key}
+                      type="button"
+                      onClick={() => handleViewModeChange(svcMode)}
+                      className={`p-1.5 rounded hover:bg-muted ${viewMode === svcMode ? "bg-muted" : ""}`}
+                      title={cfg?.label ?? defaultServiceLabel(svc.key)}
+                    >
+                      <ServiceIcon
+                        name={cfg?.icon ?? "ExternalLink"}
+                        className="w-4 h-4"
+                      />
+                    </button>
+                  );
+                })}
               {!isStopped && (
                 <button
                   type="button"
@@ -753,32 +792,25 @@ export const TskPane: FC<TskPaneProps> = ({
               {task.status}
             </span>
           </div>
-          {(task.frontend_url || task.vnc_url) && (
+          {sortedServices.length > 0 && (
             <div className="flex items-center gap-2 pt-1">
               <span className="text-muted-foreground w-16">URLs:</span>
-              <div className="flex gap-2">
-                {task.frontend_url && (
-                  <a
-                    href={task.frontend_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-500 hover:underline flex items-center gap-1"
-                  >
-                    <ExternalLink className="w-3 h-3" />
-                    Frontend
-                  </a>
-                )}
-                {task.vnc_url && (
-                  <a
-                    href={task.vnc_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-500 hover:underline flex items-center gap-1"
-                  >
-                    <Monitor className="w-3 h-3" />
-                    VNC
-                  </a>
-                )}
+              <div className="flex gap-2 flex-wrap">
+                {sortedServices.map((svc) => {
+                  const cfg = displayConfig[svc.key];
+                  return (
+                    <a
+                      key={svc.key}
+                      href={svc.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-500 hover:underline flex items-center gap-1"
+                    >
+                      <ServiceIcon name={cfg?.icon ?? "ExternalLink"} />
+                      {cfg?.label ?? defaultServiceLabel(svc.key)}
+                    </a>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -870,24 +902,33 @@ export const TskPane: FC<TskPaneProps> = ({
           </div>
         )}
 
-        {viewMode === "frontend" && task.frontend_url && (
-          <iframe
-            src={task.frontend_url}
-            className="w-full h-full border-0 bg-white"
-            title={`${task.name} frontend`}
-          />
-        )}
-
-        {viewMode === "vnc" && task.vnc_url && (
-          <div className="relative h-full">
-            <iframe
-              src={task.vnc_url}
-              className="w-full h-full border-0"
-              title={`${task.name} VNC`}
-            />
-            <ToolCallsOverlay />
-          </div>
-        )}
+        {typeof viewMode === "string" &&
+          viewMode.startsWith("service:") &&
+          (() => {
+            const key = viewMode.slice(8);
+            const svc = task.services.find((s) => s.key === key);
+            const cfg = displayConfig[key];
+            if (!svc) return null;
+            if (cfg?.embedType === "vnc") {
+              return (
+                <div className="relative h-full">
+                  <iframe
+                    src={svc.url}
+                    className="w-full h-full border-0"
+                    title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
+                  />
+                  <ToolCallsOverlay />
+                </div>
+              );
+            }
+            return (
+              <iframe
+                src={svc.url}
+                className="w-full h-full border-0 bg-white"
+                title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
+              />
+            );
+          })()}
 
         {viewMode === "split" && (
           <div className="grid grid-cols-2 h-full">
@@ -899,6 +940,7 @@ export const TskPane: FC<TskPaneProps> = ({
               getToolResult={getToolResult}
               ToolCallsOverlay={ToolCallsOverlay}
               side="left"
+              displayConfig={displayConfig}
             />
             <SplitPane
               mode={splitRight}
@@ -908,6 +950,7 @@ export const TskPane: FC<TskPaneProps> = ({
               getToolResult={getToolResult}
               ToolCallsOverlay={ToolCallsOverlay}
               side="right"
+              displayConfig={displayConfig}
             />
           </div>
         )}

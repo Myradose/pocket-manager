@@ -1,6 +1,21 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { honoClient } from "../../lib/api/client";
 
+export type ServiceInfo = {
+  key: string;
+  url: string;
+  port: number;
+  path: string;
+};
+
+export type ServiceDisplayConfig = {
+  label: string;
+  icon: string;
+  visible: boolean;
+  order: number;
+  embedType: "iframe" | "vnc";
+};
+
 export type TskTask = {
   id: string;
   name: string;
@@ -13,8 +28,7 @@ export type TskTask = {
   started_at: string | null;
   container_id?: string;
   transcripts_dir: string;
-  frontend_url?: string;
-  vnc_url?: string;
+  services: ServiceInfo[];
   copied_repo_path?: string;
   submodules?: string[];
 };
@@ -188,6 +202,48 @@ export const useStopTskTask = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["tsk", "tasks"] });
+    },
+  });
+};
+
+export const tskServiceDisplayConfigQuery = (projectPath: string) => ({
+  queryKey: ["tsk", "service-config", projectPath],
+  queryFn: async (): Promise<Record<string, ServiceDisplayConfig> | null> => {
+    const response = await honoClient.api.tsk["service-config"].$get({
+      query: { projectPath },
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to fetch service config: ${response.statusText}`);
+    }
+    const data = (await response.json()) as {
+      services: Record<string, ServiceDisplayConfig> | null;
+    };
+    return data.services;
+  },
+  staleTime: 30000,
+});
+
+export const useUpdateServiceDisplayConfig = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (params: {
+      projectPath: string;
+      services: Record<string, ServiceDisplayConfig>;
+    }) => {
+      const response = await honoClient.api.tsk["service-config"].$put({
+        json: params,
+      });
+      if (!response.ok) {
+        throw new Error(
+          `Failed to update service config: ${response.statusText}`,
+        );
+      }
+      return await response.json();
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({
+        queryKey: ["tsk", "service-config", variables.projectPath],
+      });
     },
   });
 };

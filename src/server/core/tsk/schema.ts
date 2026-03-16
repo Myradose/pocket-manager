@@ -11,6 +11,13 @@ export const createTaskRequestSchema = z.object({
 
 export type CreateTaskRequest = z.infer<typeof createTaskRequestSchema>;
 
+export type ServiceInfo = {
+  key: string;
+  url: string;
+  port: number;
+  path: string;
+};
+
 export type TskTaskResponse = {
   id: string;
   name: string;
@@ -23,8 +30,33 @@ export type TskTaskResponse = {
   started_at: string | null;
   container_id?: string;
   transcripts_dir: string;
-  frontend_url?: string;
-  vnc_url?: string;
+  services: ServiceInfo[];
   copied_repo_path?: string;
   submodules?: string[];
 };
+
+export type ServiceDisplayConfig = {
+  label: string;
+  icon: string;
+  visible: boolean;
+  order: number;
+  embedType: "iframe" | "vnc";
+};
+
+export const serviceDisplayConfigSchema = z.object({
+  label: z.string(),
+  icon: z.string(),
+  visible: z.boolean(),
+  order: z.number(),
+  embedType: z.enum(["iframe", "vnc"]),
+});
+
+export type ProjectServiceConfig = {
+  projectPath: string;
+  services: Record<string, ServiceDisplayConfig>;
+};
+
+export const projectServiceConfigSchema = z.object({
+  projectPath: z.string(),
+  services: z.record(z.string(), serviceDisplayConfigSchema),
+});

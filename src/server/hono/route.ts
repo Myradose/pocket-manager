@@ -41,7 +41,10 @@ import { ensureTerminalSchema } from "../core/terminal/schema";
 import { TerminalSessionService } from "../core/terminal/services/TerminalSessionService";
 import { handleTerminalWebSocket } from "../core/terminal/ws/TerminalWebSocketHandler";
 import { TskController } from "../core/tsk/presentation/TskController";
-import { createTaskRequestSchema } from "../core/tsk/schema";
+import {
+  createTaskRequestSchema,
+  projectServiceConfigSchema,
+} from "../core/tsk/schema";
 import { TskService } from "../core/tsk/services/TskService";
 import { userConfigSchema } from "../lib/config/config";
 import { effectToResponse } from "../lib/effect/toEffectResponse";
@@ -788,6 +791,32 @@ export const routes = (app: HonoAppType, options: CliOptions) =>
             const response = await effectToResponse(
               c,
               tskController.openPath(body),
+            );
+            return response;
+          },
+        )
+
+        .get(
+          "/api/tsk/service-config",
+          zValidator("query", z.object({ projectPath: z.string().min(1) })),
+          async (c) => {
+            const { projectPath } = c.req.valid("query");
+            const response = await effectToResponse(
+              c,
+              tskController.getServiceDisplayConfig({ projectPath }),
+            );
+            return response;
+          },
+        )
+
+        .put(
+          "/api/tsk/service-config",
+          zValidator("json", projectServiceConfigSchema),
+          async (c) => {
+            const body = c.req.valid("json");
+            const response = await effectToResponse(
+              c,
+              tskController.updateServiceDisplayConfig(body),
             );
             return response;
           },
