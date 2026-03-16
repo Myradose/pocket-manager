@@ -95,6 +95,27 @@ export const XTerminal: FC<XTerminalProps> = ({
       // WebGL not available, fall back to DOM renderer
     }
 
+    // Intercept wheel events to prevent xterm.js from converting them into
+    // single arrow-key presses in the alternate screen buffer (used by tmux).
+    // Instead, send PgUp/PgDn sequences which tmux handles natively —
+    // PgUp enters copy-mode and scrolls up, PgDn scrolls down and exits
+    // copy-mode at the bottom.
+    let wheelAccumulator = 0;
+    const SCROLL_THRESHOLD = 75;
+    terminal.attachCustomWheelEventHandler((ev: WheelEvent) => {
+      if (ev.deltaY === 0) return true;
+      const ws = wsRef.current;
+      if (!ws || ws.readyState !== WebSocket.OPEN) return true;
+
+      wheelAccumulator += ev.deltaY;
+      if (Math.abs(wheelAccumulator) >= SCROLL_THRESHOLD) {
+        const seq = wheelAccumulator < 0 ? "\x1b[5~" : "\x1b[6~";
+        ws.send(seq);
+        wheelAccumulator = 0;
+      }
+      return false;
+    });
+
     // Forward terminal input to the WebSocket (if connected).
     terminal.onData((data) => {
       const ws = wsRef.current;
