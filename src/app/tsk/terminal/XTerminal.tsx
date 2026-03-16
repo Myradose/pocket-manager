@@ -46,7 +46,7 @@ export const XTerminal: FC<XTerminalProps> = ({
       fontWeightBold: "bold",
       minimumContrastRatio: 4.5,
       drawBoldTextInBrightColors: true,
-      scrollback: 1000,
+      scrollback: 0,
       theme: {
         background: "#181818",
         foreground: "#cccccc",
@@ -95,25 +95,15 @@ export const XTerminal: FC<XTerminalProps> = ({
       // WebGL not available, fall back to DOM renderer
     }
 
-    // Intercept wheel events to prevent xterm.js from converting them into
-    // single arrow-key presses in the alternate screen buffer (used by tmux).
-    // Instead, send PgUp/PgDn sequences which tmux handles natively —
-    // PgUp enters copy-mode and scrolls up, PgDn scrolls down and exits
-    // copy-mode at the bottom.
-    let wheelAccumulator = 0;
-    const SCROLL_THRESHOLD = 35;
-    terminal.attachCustomWheelEventHandler((ev: WheelEvent) => {
-      if (ev.deltaY === 0) return true;
-      const ws = wsRef.current;
-      if (!ws || ws.readyState !== WebSocket.OPEN) return true;
-
-      wheelAccumulator += ev.deltaY;
-      if (Math.abs(wheelAccumulator) >= SCROLL_THRESHOLD) {
-        const seq = wheelAccumulator < 0 ? "\x1b[5~" : "\x1b[6~";
-        ws.send(seq);
-        wheelAccumulator = 0;
+    // Auto-copy to clipboard on selection (Shift+drag to select).
+    // This avoids the need for Shift+right-click or keyboard shortcuts.
+    terminal.onSelectionChange(() => {
+      const selection = terminal.getSelection();
+      if (selection) {
+        navigator.clipboard.writeText(selection).catch(() => {
+          // Clipboard access denied — user can still Shift+right-click
+        });
       }
-      return false;
     });
 
     // Forward terminal input to the WebSocket (if connected).
