@@ -47,6 +47,14 @@ export type PtyAttachment = {
   };
 };
 
+const SAFE_NAME = /^[a-zA-Z0-9_-]+$/;
+
+const assertSafeName = (name: string) => {
+  if (!SAFE_NAME.test(name)) {
+    throw new Error(`Invalid terminal name: ${name}`);
+  }
+};
+
 const ptyAttachmentKey = (containerId: string, tmuxName: string) =>
   `${containerId}:${tmuxName}`;
 
@@ -87,6 +95,7 @@ const LayerImpl = Effect.gen(function* () {
   ) =>
     Effect.tryPromise({
       try: async () => {
+        assertSafeName(name);
         const { execSync } = await import("node:child_process");
         try {
           execSync(`docker exec ${containerId} tmux has-session -t ${name}`, {
@@ -110,6 +119,7 @@ const LayerImpl = Effect.gen(function* () {
   const destroyTmuxSession = (containerId: string, name: string) =>
     Effect.tryPromise({
       try: async () => {
+        assertSafeName(name);
         const key = ptyAttachmentKey(containerId, name);
         const existing = attachments.get(key);
         if (existing) killAttachment(existing);
@@ -130,6 +140,7 @@ const LayerImpl = Effect.gen(function* () {
   ) =>
     Effect.tryPromise({
       try: async () => {
+        assertSafeName(name);
         const key = ptyAttachmentKey(containerId, name);
         const existing = attachments.get(key);
         if (existing) killAttachment(existing);
