@@ -438,19 +438,29 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
             <ArrowLeft className="w-4 h-4" />
             Back to all tasks
           </Link>
-          <button
-            type="button"
-            onClick={() => setShowToolsOverlay((prev) => !prev)}
-            className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
-              showToolsOverlay
-                ? "bg-primary text-primary-foreground"
-                : "hover:bg-muted"
-            }`}
-            title="Toggle tool calls overlay on VNC"
-          >
-            <MessageSquare className="w-3 h-3" />
-            Tools
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setShowToolsOverlay((prev) => !prev)}
+              className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
+                showToolsOverlay
+                  ? "bg-primary text-primary-foreground"
+                  : "hover:bg-muted"
+              }`}
+              title="Toggle tool calls overlay on VNC"
+            >
+              <MessageSquare className="w-3 h-3" />
+              Tools
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowServiceSettings(true)}
+              className="p-1.5 rounded hover:bg-muted"
+              title="Service display settings"
+            >
+              <Settings className="w-3 h-3" />
+            </button>
+          </div>
         </div>
         <div className="flex-1 overflow-hidden p-1">
           <TskPane
@@ -476,6 +486,15 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
             displayConfig={displayConfig}
           />
         </div>
+        {workspacePath && (
+          <ServiceSettingsDialog
+            open={showServiceSettings}
+            onOpenChange={setShowServiceSettings}
+            workspacePath={workspacePath}
+            allServiceKeys={allServiceKeys}
+            displayConfig={displayConfig}
+          />
+        )}
       </div>
     );
   }
