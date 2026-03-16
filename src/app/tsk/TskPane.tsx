@@ -344,8 +344,37 @@ export const TskPane: FC<TskPaneProps> = ({
 
   // Track if split mode is active (detail view only feature)
   const [isSplitMode, setIsSplitMode] = useState(false);
-  const [splitLeft, setSplitLeft] = useState<GridViewMode>("terminal");
-  const [splitRight, setSplitRight] = useState<GridViewMode>("conversation");
+  const splitStorageKey = `tsk-split:${task.repo_root}`;
+  const [splitLeft, _setSplitLeft] = useState<GridViewMode>("terminal");
+  const [splitRight, _setSplitRight] = useState<GridViewMode>("conversation");
+
+  // Wrap setters to persist split pair to localStorage
+  const setSplitLeft = useCallback(
+    (mode: GridViewMode) => {
+      _setSplitLeft(mode);
+      try {
+        const saved = JSON.parse(localStorage.getItem(splitStorageKey) ?? "{}");
+        localStorage.setItem(
+          splitStorageKey,
+          JSON.stringify({ ...saved, left: mode }),
+        );
+      } catch {}
+    },
+    [splitStorageKey],
+  );
+  const setSplitRight = useCallback(
+    (mode: GridViewMode) => {
+      _setSplitRight(mode);
+      try {
+        const saved = JSON.parse(localStorage.getItem(splitStorageKey) ?? "{}");
+        localStorage.setItem(
+          splitStorageKey,
+          JSON.stringify({ ...saved, right: mode }),
+        );
+      } catch {}
+    },
+    [splitStorageKey],
+  );
   const [showInfo, setShowInfo] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -416,23 +445,36 @@ export const TskPane: FC<TskPaneProps> = ({
 
   const handleSplitMode = () => {
     if (!isSplitMode) {
-      const visibleServices = sortedServices.filter((s) => {
-        const cfg = displayConfig[s.key];
-        return !cfg || cfg.visible;
-      });
-      if (
-        visibleServices.length >= 2 &&
-        visibleServices[0] &&
-        visibleServices[1]
-      ) {
-        setSplitLeft(`service:${visibleServices[0].key}`);
-        setSplitRight(`service:${visibleServices[1].key}`);
-      } else if (visibleServices.length === 1 && visibleServices[0]) {
-        setSplitLeft("terminal");
-        setSplitRight(`service:${visibleServices[0].key}`);
-      } else {
-        setSplitLeft("terminal");
-        setSplitRight("conversation");
+      // Try restoring last-used split pair from localStorage
+      let restored = false;
+      try {
+        const saved = JSON.parse(localStorage.getItem(splitStorageKey) ?? "{}");
+        if (saved.left && saved.right) {
+          _setSplitLeft(saved.left);
+          _setSplitRight(saved.right);
+          restored = true;
+        }
+      } catch {}
+
+      if (!restored) {
+        const visibleServices = sortedServices.filter((s) => {
+          const cfg = displayConfig[s.key];
+          return !cfg || cfg.visible;
+        });
+        if (
+          visibleServices.length >= 2 &&
+          visibleServices[0] &&
+          visibleServices[1]
+        ) {
+          setSplitLeft(`service:${visibleServices[0].key}`);
+          setSplitRight(`service:${visibleServices[1].key}`);
+        } else if (visibleServices.length === 1 && visibleServices[0]) {
+          setSplitLeft("terminal");
+          setSplitRight(`service:${visibleServices[0].key}`);
+        } else {
+          setSplitLeft("terminal");
+          setSplitRight("conversation");
+        }
       }
     }
     setIsSplitMode(true);
