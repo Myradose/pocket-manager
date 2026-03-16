@@ -21,6 +21,16 @@ import {
   useRef,
   useState,
 } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Input } from "@/components/ui/input";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { TooltipIconButton } from "@/components/ui/tooltip-icon-button";
 import { CreateTaskDialog } from "./CreateTaskDialog";
 import { EditableTaskName } from "./EditableTaskName";
 import {
@@ -80,14 +90,14 @@ const WorkspaceSelector: FC = () => {
   if (isEditing) {
     return (
       <div className="flex items-center gap-1">
-        <FolderOpen className="w-3 h-3 text-muted-foreground shrink-0" />
-        <input
+        <FolderOpen className="size-3 text-muted-foreground shrink-0" />
+        <Input
           type="text"
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
           onKeyDown={handleKeyDown}
           onBlur={handleSave}
-          className="px-2 py-0.5 rounded border bg-background text-xs font-mono w-56"
+          className="h-6 px-2 py-0.5 text-xs font-mono w-56"
           placeholder="/path/to/repo"
         />
       </div>
@@ -96,27 +106,29 @@ const WorkspaceSelector: FC = () => {
 
   if (!workspacePath) {
     return (
-      <button
-        type="button"
+      <Button
+        variant="ghost"
+        size="sm"
+        className="h-7 gap-1 px-2 text-xs text-muted-foreground"
         onClick={handleStartEdit}
-        className="flex items-center gap-1 px-2 py-1 rounded text-xs text-muted-foreground hover:bg-muted"
       >
-        <FolderOpen className="w-3 h-3" />
+        <FolderOpen className="size-3" />
         Set workspace
-      </button>
+      </Button>
     );
   }
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="ghost"
+      size="sm"
+      className="h-7 gap-1 px-2 text-xs min-w-0"
       onClick={handleStartEdit}
-      className="flex items-center gap-1 px-2 py-1 rounded text-xs hover:bg-muted min-w-0"
       title={workspacePath}
     >
-      <FolderOpen className="w-3 h-3 text-muted-foreground shrink-0" />
+      <FolderOpen className="size-3 text-muted-foreground shrink-0" />
       <span className="font-mono truncate max-w-48">{workspacePath}</span>
-    </button>
+    </Button>
   );
 };
 
@@ -165,28 +177,28 @@ const StoppedTaskRow: FC<{ task: TskTask }> = ({ task }) => {
         {formatRelativeTime(task.started_at ?? task.created_at)}
       </span>
       <div className="flex items-center gap-1 shrink-0">
-        <button
-          type="button"
+        <TooltipIconButton
+          variant="ghost"
+          tooltip="Continue task"
+          className="h-6 w-6 p-1 text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30"
           onClick={() => continueTask.mutate(task.id)}
           disabled={isResuming}
-          className="p-1 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600 disabled:opacity-50"
-          title="Continue task"
         >
           {isResuming ? (
-            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            <Loader2 className="size-3.5 animate-spin" />
           ) : (
-            <Play className="w-3.5 h-3.5 fill-current" />
+            <Play className="size-3.5 fill-current" />
           )}
-        </button>
-        <button
-          type="button"
+        </TooltipIconButton>
+        <TooltipIconButton
+          variant="ghost"
+          tooltip="Delete task"
+          className="h-6 w-6 p-1 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={() => deleteTask.mutate(task.id)}
           disabled={deleteTask.isPending}
-          className="p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500 opacity-0 group-hover:opacity-100 transition-opacity disabled:opacity-50"
-          title="Delete task"
         >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+          <Trash2 className="size-3.5" />
+        </TooltipIconButton>
       </div>
     </div>
   );
@@ -538,11 +550,11 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
               <div className="px-3 pb-2 text-sm font-medium text-muted-foreground">
                 Stopped ({stoppedTasks.length})
               </div>
-              <div className="flex-1 overflow-y-auto px-1 pb-2">
+              <ScrollArea className="flex-1 px-1 pb-2">
                 {stoppedTasks.map((task) => (
                   <StoppedTaskRow key={task.id} task={task} />
                 ))}
-              </div>
+              </ScrollArea>
             </>
           )}
         </div>
@@ -560,18 +572,18 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
             search={{}}
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
-            <ArrowLeft className="w-4 h-4" />
+            <ArrowLeft className="size-4" />
             Back to all tasks
           </Link>
           <div className="flex items-center gap-1">
-            <button
-              type="button"
+            <TooltipIconButton
+              variant="ghost"
+              tooltip="Service display settings"
+              className="h-7 w-7 p-1.5"
               onClick={() => setShowServiceSettings(true)}
-              className="p-1.5 rounded hover:bg-muted"
-              title="Service display settings"
             >
-              <Settings className="w-3 h-3" />
-            </button>
+              <Settings className="size-4" />
+            </TooltipIconButton>
           </div>
         </div>
       ) : (
@@ -591,71 +603,69 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
               </span>
             )}
             {!isFocusMode && selectedTaskIds.length > 0 && (
-              <button
-                type="button"
+              <Button
+                size="sm"
+                className="bg-blue-600 hover:bg-blue-700 text-white h-7 gap-1"
                 onClick={enterFocusMode}
-                className="flex items-center gap-1 px-2 py-1 rounded text-sm bg-blue-600 text-white hover:bg-blue-700"
               >
-                <Focus className="w-3 h-3" />
+                <Focus className="size-3" />
                 Focus
-              </button>
+              </Button>
             )}
             {isFocusMode && (
-              <button
-                type="button"
+              <Button
+                size="sm"
+                className="bg-orange-600 hover:bg-orange-700 text-white h-7 gap-1"
                 onClick={exitFocusMode}
-                className="flex items-center gap-1 px-2 py-1 rounded text-sm bg-orange-600 text-white hover:bg-orange-700"
               >
-                <XCircle className="w-3 h-3" />
+                <XCircle className="size-3" />
                 Exit Focus
-              </button>
+              </Button>
             )}
           </div>
           <div className="flex items-center gap-1">
             <span className="text-xs text-muted-foreground mr-2">
               All tasks:
             </span>
-            <button
-              type="button"
-              onClick={() => setAllTasksViewMode("terminal")}
-              className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
-                globalState === "terminal"
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
-              }`}
+            <ToggleGroup
+              type="single"
+              value={globalState === "mixed" ? "" : globalState}
+              onValueChange={(v) => {
+                if (v) setAllTasksViewMode(v as GridViewMode);
+              }}
             >
-              <SquareTerminal className="w-3 h-3" />
-              Terminal
-            </button>
-            {allServiceKeys.map((key) => {
-              const cfg = displayConfig[key];
-              if (cfg && !cfg.visible) return null;
-              const svcMode: GridViewMode = `service:${key}`;
-              return (
-                <button
-                  key={key}
-                  type="button"
-                  onClick={() => setAllTasksViewMode(svcMode)}
-                  className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
-                    globalState === svcMode
-                      ? "bg-primary text-primary-foreground"
-                      : "hover:bg-muted"
-                  }`}
-                >
-                  <ServiceIcon name={cfg?.icon ?? "ExternalLink"} />
-                  {cfg?.label ?? defaultServiceLabel(key)}
-                </button>
-              );
-            })}
-            <span className="text-muted-foreground mx-2">|</span>
-            <button
-              type="button"
+              <ToggleGroupItem
+                value="terminal"
+                className="gap-1 px-2 h-7 text-sm data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+              >
+                <SquareTerminal className="size-4" />
+                Terminal
+              </ToggleGroupItem>
+              {allServiceKeys.map((key) => {
+                const cfg = displayConfig[key];
+                if (cfg && !cfg.visible) return null;
+                const svcMode: GridViewMode = `service:${key}`;
+                return (
+                  <ToggleGroupItem
+                    key={key}
+                    value={svcMode}
+                    className="gap-1 px-2 h-7 text-sm data-[state=on]:bg-primary data-[state=on]:text-primary-foreground"
+                  >
+                    <ServiceIcon name={cfg?.icon ?? "ExternalLink"} />
+                    {cfg?.label ?? defaultServiceLabel(key)}
+                  </ToggleGroupItem>
+                );
+              })}
+            </ToggleGroup>
+            <div className="w-px h-4 mx-2 bg-muted-foreground/30 shrink-0" />
+            <TooltipIconButton
+              variant="ghost"
+              tooltip="Service display settings"
+              className="h-7 w-7 p-1.5"
               onClick={() => setShowServiceSettings(true)}
-              className="p-1.5 rounded hover:bg-muted"
-              title="Service display settings"
             >
-              <Settings className="w-3 h-3" />
-            </button>
+              <Settings className="size-4" />
+            </TooltipIconButton>
           </div>
         </div>
       )}
@@ -714,27 +724,34 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
 
       {/* Stopped tasks strip — grid only */}
       {!detailTaskId && stoppedTasks.length > 0 && (
-        <div className="border-t bg-muted/20 shrink-0">
-          <button
-            type="button"
-            onClick={() => setStoppedCollapsed((prev) => !prev)}
-            className="flex items-center gap-2 px-3 py-1.5 w-full text-left text-sm font-medium text-muted-foreground hover:text-foreground"
-          >
-            {stoppedCollapsed ? (
-              <ChevronRight className="w-4 h-4" />
-            ) : (
-              <ChevronDown className="w-4 h-4" />
-            )}
-            Stopped ({stoppedTasks.length})
-          </button>
-          {!stoppedCollapsed && (
-            <div className="max-h-48 overflow-y-auto pb-1">
-              {stoppedTasks.map((task) => (
-                <StoppedTaskRow key={task.id} task={task} />
-              ))}
-            </div>
-          )}
-        </div>
+        <Collapsible
+          open={!stoppedCollapsed}
+          onOpenChange={(open) => setStoppedCollapsed(!open)}
+          className="border-t bg-muted/20 shrink-0"
+        >
+          <CollapsibleTrigger asChild>
+            <Button
+              variant="ghost"
+              className="w-full justify-start gap-2 px-3 py-1.5 h-auto text-sm font-medium text-muted-foreground hover:text-foreground"
+            >
+              {stoppedCollapsed ? (
+                <ChevronRight className="size-4" />
+              ) : (
+                <ChevronDown className="size-4" />
+              )}
+              Stopped ({stoppedTasks.length})
+            </Button>
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <ScrollArea className="max-h-48">
+              <div className="pb-1">
+                {stoppedTasks.map((task) => (
+                  <StoppedTaskRow key={task.id} task={task} />
+                ))}
+              </div>
+            </ScrollArea>
+          </CollapsibleContent>
+        </Collapsible>
       )}
 
       {workspacePath && (

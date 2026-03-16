@@ -1,5 +1,6 @@
 import { Eye, EyeOff, FolderOpen, GripVertical, RotateCcw } from "lucide-react";
 import { type FC, useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -7,6 +8,23 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Separator } from "@/components/ui/separator";
+import { TooltipIconButton } from "@/components/ui/tooltip-icon-button";
 import {
   type ServiceDisplayConfig,
   useOpenPath,
@@ -38,50 +56,38 @@ const IconPicker: FC<{
   id: string;
 }> = ({ value, onChange, id }) => {
   const [isOpen, setIsOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [isOpen]);
 
   return (
-    <div ref={ref} className="relative" id={id}>
-      <button
-        type="button"
-        onClick={() => setIsOpen((prev) => !prev)}
-        className="w-full flex items-center gap-2 px-2 py-1 rounded border bg-background text-sm hover:bg-muted/50"
-      >
-        <ServiceIcon name={value} />
-        <span className="flex-1 text-left">{value}</span>
-      </button>
-      {isOpen && (
-        <div className="absolute z-50 top-full left-0 mt-1 w-full bg-popover border rounded shadow-md max-h-40 overflow-y-auto scrollbar-thin">
-          {ICON_OPTIONS.map((icon) => (
-            <button
-              key={icon}
-              type="button"
-              onClick={() => {
-                onChange(icon);
-                setIsOpen(false);
-              }}
-              className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm hover:bg-muted ${
-                icon === value ? "bg-muted" : ""
-              }`}
-            >
-              <ServiceIcon name={icon} />
-              <span>{icon}</span>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <Popover open={isOpen} onOpenChange={setIsOpen}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          id={id}
+          className="w-full flex items-center gap-2 px-2 py-1 rounded border bg-background text-sm hover:bg-muted/50"
+        >
+          <ServiceIcon name={value} />
+          <span className="flex-1 text-left">{value}</span>
+        </button>
+      </PopoverTrigger>
+      <PopoverContent className="w-48 p-1" align="start">
+        {ICON_OPTIONS.map((icon) => (
+          <button
+            key={icon}
+            type="button"
+            onClick={() => {
+              onChange(icon);
+              setIsOpen(false);
+            }}
+            className={`w-full flex items-center gap-2 px-2 py-1.5 text-sm rounded hover:bg-muted ${
+              icon === value ? "bg-muted" : ""
+            }`}
+          >
+            <ServiceIcon name={icon} />
+            <span>{icon}</span>
+          </button>
+        ))}
+      </PopoverContent>
+    </Popover>
   );
 };
 
@@ -228,7 +234,10 @@ export const ServiceSettingsDialog: FC<ServiceSettingsDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent
+        className="max-w-lg"
+        onOpenAutoFocus={(e) => e.preventDefault()}
+      >
         <DialogHeader>
           <DialogTitle>Service Display Settings</DialogTitle>
         </DialogHeader>
@@ -237,7 +246,7 @@ export const ServiceSettingsDialog: FC<ServiceSettingsDialogProps> = ({
             No services discovered. Services will appear when tasks are running.
           </p>
         ) : (
-          <div className="max-h-80 overflow-y-auto scrollbar-thin pr-2">
+          <ScrollArea className="max-h-80 pr-2">
             {(() => {
               const visibleKeys = orderedKeys.filter(
                 (k) => localConfig[k]?.visible !== false,
@@ -278,9 +287,9 @@ export const ServiceSettingsDialog: FC<ServiceSettingsDialogProps> = ({
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2 font-medium">
                         {dragEnabled ? (
-                          <GripVertical className="w-3 h-3 text-muted-foreground cursor-grab shrink-0" />
+                          <GripVertical className="size-3.5 text-muted-foreground cursor-grab shrink-0" />
                         ) : (
-                          <div className="w-3" />
+                          <div className="w-3.5" />
                         )}
                         <ServiceIcon name={cfg.icon} />
                         <code className="text-xs bg-muted px-1 rounded">
@@ -288,55 +297,57 @@ export const ServiceSettingsDialog: FC<ServiceSettingsDialogProps> = ({
                         </code>
                       </div>
                       <div className="flex items-center gap-2">
-                        <button
-                          type="button"
+                        <TooltipIconButton
+                          variant="ghost"
+                          tooltip="Reset to defaults"
+                          className="h-6 w-6 p-1 text-muted-foreground"
                           onClick={() => handleResetKey(key)}
-                          className="p-1 rounded hover:bg-muted text-muted-foreground"
-                          title="Reset to defaults"
                         >
-                          <RotateCcw className="w-3 h-3" />
-                        </button>
-                        <button
-                          type="button"
+                          <RotateCcw className="size-3.5" />
+                        </TooltipIconButton>
+                        <TooltipIconButton
+                          variant="ghost"
+                          tooltip={
+                            cfg.visible ? "Hide service" : "Show service"
+                          }
+                          className={`h-6 w-6 p-1 ${cfg.visible ? "text-foreground" : "text-muted-foreground/40"}`}
                           onClick={() =>
                             updateField(key, "visible", !cfg.visible)
                           }
-                          className={`p-1 rounded hover:bg-muted ${cfg.visible ? "text-foreground" : "text-muted-foreground/40"}`}
-                          title={cfg.visible ? "Hide service" : "Show service"}
                         >
                           {cfg.visible ? (
-                            <Eye className="w-3.5 h-3.5" />
+                            <Eye className="size-3.5" />
                           ) : (
-                            <EyeOff className="w-3.5 h-3.5" />
+                            <EyeOff className="size-3.5" />
                           )}
-                        </button>
+                        </TooltipIconButton>
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
                       <div>
-                        <label
+                        <Label
                           htmlFor={`svc-label-${key}`}
                           className="text-xs text-muted-foreground"
                         >
                           Label
-                        </label>
-                        <input
+                        </Label>
+                        <Input
                           id={`svc-label-${key}`}
                           type="text"
                           value={cfg.label}
                           onChange={(e) =>
                             updateField(key, "label", e.target.value)
                           }
-                          className="w-full px-2 py-1 rounded border bg-background text-sm"
+                          className="h-8 text-sm"
                         />
                       </div>
                       <div>
-                        <label
+                        <Label
                           htmlFor={`svc-icon-${key}`}
                           className="text-xs text-muted-foreground"
                         >
                           Icon
-                        </label>
+                        </Label>
                         <IconPicker
                           id={`svc-icon-${key}`}
                           value={cfg.icon}
@@ -344,23 +355,29 @@ export const ServiceSettingsDialog: FC<ServiceSettingsDialogProps> = ({
                         />
                       </div>
                       <div>
-                        <label
+                        <Label
                           htmlFor={`svc-embed-${key}`}
                           className="text-xs text-muted-foreground"
                         >
                           Embed Type
-                        </label>
-                        <select
-                          id={`svc-embed-${key}`}
+                        </Label>
+                        <Select
                           value={cfg.embedType}
-                          onChange={(e) =>
-                            updateField(key, "embedType", e.target.value)
+                          onValueChange={(v) =>
+                            updateField(key, "embedType", v)
                           }
-                          className="w-full px-2 py-1 rounded border bg-background text-sm"
                         >
-                          <option value="iframe">iframe</option>
-                          <option value="vnc">vnc</option>
-                        </select>
+                          <SelectTrigger
+                            id={`svc-embed-${key}`}
+                            className="h-8 text-sm"
+                          >
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="iframe">iframe</SelectItem>
+                            <SelectItem value="vnc">vnc</SelectItem>
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
                   </div>
@@ -375,11 +392,11 @@ export const ServiceSettingsDialog: FC<ServiceSettingsDialogProps> = ({
                   {hiddenKeys.length > 0 && (
                     <>
                       <div className="flex items-center gap-2 py-2 px-1">
-                        <div className="flex-1 border-t" />
+                        <Separator className="flex-1" />
                         <span className="text-xs text-muted-foreground shrink-0">
                           Hidden
                         </span>
-                        <div className="flex-1 border-t" />
+                        <Separator className="flex-1" />
                       </div>
                       <div className="space-y-1">
                         {hiddenKeys.map((key) => renderCard(key, false))}
@@ -389,44 +406,35 @@ export const ServiceSettingsDialog: FC<ServiceSettingsDialogProps> = ({
                 </>
               );
             })()}
-          </div>
+          </ScrollArea>
         )}
         <DialogFooter>
           <div className="flex items-center gap-2 mr-auto">
-            <button
-              type="button"
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={handleResetAll}
-              className="flex items-center gap-1.5 px-3 py-2 rounded text-sm hover:bg-muted text-muted-foreground"
-              title="Reset all services to defaults"
+              className="text-muted-foreground"
             >
-              <RotateCcw className="w-3 h-3" />
+              <RotateCcw className="size-3.5" />
               Reset All
-            </button>
-            <button
-              type="button"
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={handleOpenConfig}
-              className="flex items-center gap-1.5 px-3 py-2 rounded text-sm hover:bg-muted text-muted-foreground"
-              title="Open config directory"
+              className="text-muted-foreground"
             >
-              <FolderOpen className="w-3 h-3" />
+              <FolderOpen className="size-3.5" />
               Open Config
-            </button>
+            </Button>
           </div>
-          <button
-            type="button"
-            onClick={() => onOpenChange(false)}
-            className="px-4 py-2 rounded text-sm hover:bg-muted"
-          >
+          <Button variant="ghost" onClick={() => onOpenChange(false)}>
             Cancel
-          </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            disabled={updateConfig.isPending}
-            className="px-4 py-2 rounded text-sm bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
+          </Button>
+          <Button onClick={handleSave} disabled={updateConfig.isPending}>
             Save
-          </button>
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

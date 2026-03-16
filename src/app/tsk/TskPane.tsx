@@ -1,6 +1,5 @@
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
-  Check,
   CheckCheck,
   Code,
   Columns2,
@@ -22,6 +21,8 @@ import {
   useMemo,
   useState,
 } from "react";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogContent,
@@ -30,6 +31,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { TooltipIconButton } from "@/components/ui/tooltip-icon-button";
 import { EditableTaskName } from "./EditableTaskName";
 import type { ServiceDisplayConfig, TskTask } from "./queries";
 import {
@@ -370,34 +377,30 @@ export const TskPane: FC<TskPaneProps> = ({
       <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/50">
         <div className="flex items-center gap-2 min-w-0">
           {showSelectionControls && onToggleSelect && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onToggleSelect();
-              }}
-              className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-colors ${
-                isSelected
-                  ? "bg-blue-600 border-blue-600 text-white"
-                  : "border-muted-foreground/50 hover:border-blue-600"
-              }`}
-              title={isSelected ? "Deselect task" : "Select task"}
-            >
-              {isSelected && <Check className="w-3 h-3" />}
-            </button>
+            <Checkbox
+              checked={isSelected}
+              onCheckedChange={() => onToggleSelect()}
+              onClick={(e) => e.stopPropagation()}
+              className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
+              aria-label={isSelected ? "Deselect task" : "Select task"}
+            />
           )}
           <div className={`w-2 h-2 rounded-full ${statusColor}`} />
           {isGridView ? (
             <>
               <span className="font-medium truncate text-sm">{task.name}</span>
-              <Link
-                to="/"
-                search={{ tasks: task.id }}
-                className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0"
-                title="Open detail view"
-              >
-                <Maximize2 className="w-3 h-3" />
-              </Link>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Link
+                    to="/"
+                    search={{ tasks: task.id }}
+                    className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0"
+                  >
+                    <Maximize2 className="size-3" />
+                  </Link>
+                </TooltipTrigger>
+                <TooltipContent>Open detail view</TooltipContent>
+              </Tooltip>
             </>
           ) : (
             <EditableTaskName
@@ -410,69 +413,69 @@ export const TskPane: FC<TskPaneProps> = ({
         </div>
         <div className="flex items-center gap-1">
           {(isActiveTask || task.status === "QUEUED") && !isTransitioning && (
-            <button
-              type="button"
+            <TooltipIconButton
+              variant="ghost"
+              tooltip={isActiveTask ? "Stop task" : "Delete task"}
+              className="h-7 w-7 p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"
               onClick={() => setShowStopDialog(true)}
               disabled={stopTask.isPending || deleteTask.isPending}
-              className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"
-              title={isActiveTask ? "Stop task" : "Delete task"}
             >
               {isActiveTask ? (
-                <Square className="w-4 h-4 fill-current" />
+                <Square className="size-4 fill-current" />
               ) : (
-                <Trash2 className="w-4 h-4" />
+                <Trash2 className="size-4" />
               )}
-            </button>
+            </TooltipIconButton>
           )}
           {task.status === "STOPPED" && (
             <>
-              <button
-                type="button"
+              <TooltipIconButton
+                variant="ghost"
+                tooltip="Continue task"
+                className="h-7 w-7 p-1.5 hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600"
                 onClick={() => continueTask.mutate(task.id)}
                 disabled={continueTask.isPending}
-                className="p-1.5 rounded hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600"
-                title="Continue task"
               >
                 {continueTask.isPending ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <Loader2 className="size-4 animate-spin" />
                 ) : (
-                  <Play className="w-4 h-4 fill-current" />
+                  <Play className="size-4 fill-current" />
                 )}
-              </button>
-              <button
-                type="button"
+              </TooltipIconButton>
+              <TooltipIconButton
+                variant="ghost"
+                tooltip="Delete task"
+                className="h-7 w-7 p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"
                 onClick={() => setShowStopDialog(true)}
                 disabled={deleteTask.isPending}
-                className="p-1.5 rounded hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"
-                title="Delete task"
               >
-                <Trash2 className="w-4 h-4" />
-              </button>
+                <Trash2 className="size-4" />
+              </TooltipIconButton>
             </>
           )}
-          <button
-            type="button"
+          <TooltipIconButton
+            variant="ghost"
+            tooltip="Show task info"
+            className={`h-7 w-7 p-1.5 ${showInfo ? "bg-muted" : ""}`}
             onClick={() => setShowInfo((prev) => !prev)}
-            className={`p-1.5 rounded hover:bg-muted ${showInfo ? "bg-muted" : ""}`}
-            title="Show task info"
           >
-            <Info className="w-4 h-4" />
-          </button>
-          <span className="text-muted-foreground mx-1">|</span>
+            <Info className="size-4" />
+          </TooltipIconButton>
+          <div className="w-px h-4 mx-1 bg-muted-foreground/30 shrink-0" />
           {isGridView ? (
             /* Grid view: terminal/services toggle */
             <>
               {!isStopped &&
                 (task.status === "SERVING" || task.status === "RUNNING") &&
                 task.container_id && (
-                  <button
-                    type="button"
+                  <TooltipIconButton
+                    variant="ghost"
+                    tooltip="Open terminal"
+                    className={`h-7 w-7 p-1.5 ${viewMode === "terminal" ? "bg-muted" : ""}`}
                     onClick={() => handleViewModeChange("terminal")}
-                    className={`p-1.5 rounded hover:bg-muted ${viewMode === "terminal" ? "bg-muted" : ""}`}
-                    title="Open terminal"
                   >
-                    <SquareTerminal className="w-4 h-4" />
-                  </button>
+                    <SquareTerminal className="size-4" />
+                  </TooltipIconButton>
                 )}
               {!isStopped &&
                 sortedServices.map((svc) => {
@@ -480,18 +483,18 @@ export const TskPane: FC<TskPaneProps> = ({
                   if (cfg && !cfg.visible) return null;
                   const svcMode: GridViewMode = `service:${svc.key}`;
                   return (
-                    <button
+                    <TooltipIconButton
                       key={svc.key}
-                      type="button"
+                      variant="ghost"
+                      tooltip={cfg?.label ?? defaultServiceLabel(svc.key)}
+                      className={`h-7 w-7 p-1.5 ${viewMode === svcMode ? "bg-muted" : ""}`}
                       onClick={() => handleViewModeChange(svcMode)}
-                      className={`p-1.5 rounded hover:bg-muted ${viewMode === svcMode ? "bg-muted" : ""}`}
-                      title={cfg?.label ?? defaultServiceLabel(svc.key)}
                     >
                       <ServiceIcon
                         name={cfg?.icon ?? "ExternalLink"}
-                        className="w-4 h-4"
+                        className="size-4"
                       />
-                    </button>
+                    </TooltipIconButton>
                   );
                 })}
             </>
@@ -501,14 +504,14 @@ export const TskPane: FC<TskPaneProps> = ({
               {!isStopped &&
                 (task.status === "SERVING" || task.status === "RUNNING") &&
                 task.container_id && (
-                  <button
-                    type="button"
+                  <TooltipIconButton
+                    variant="ghost"
+                    tooltip="Open terminal"
+                    className={`h-7 w-7 p-1.5 ${viewMode === "terminal" ? "bg-muted" : ""}`}
                     onClick={() => handleViewModeChange("terminal")}
-                    className={`p-1.5 rounded hover:bg-muted ${viewMode === "terminal" ? "bg-muted" : ""}`}
-                    title="Open terminal"
                   >
-                    <SquareTerminal className="w-4 h-4" />
-                  </button>
+                    <SquareTerminal className="size-4" />
+                  </TooltipIconButton>
                 )}
               {!isStopped &&
                 sortedServices.map((svc) => {
@@ -516,29 +519,29 @@ export const TskPane: FC<TskPaneProps> = ({
                   if (cfg && !cfg.visible) return null;
                   const svcMode: GridViewMode = `service:${svc.key}`;
                   return (
-                    <button
+                    <TooltipIconButton
                       key={svc.key}
-                      type="button"
+                      variant="ghost"
+                      tooltip={cfg?.label ?? defaultServiceLabel(svc.key)}
+                      className={`h-7 w-7 p-1.5 ${viewMode === svcMode ? "bg-muted" : ""}`}
                       onClick={() => handleViewModeChange(svcMode)}
-                      className={`p-1.5 rounded hover:bg-muted ${viewMode === svcMode ? "bg-muted" : ""}`}
-                      title={cfg?.label ?? defaultServiceLabel(svc.key)}
                     >
                       <ServiceIcon
                         name={cfg?.icon ?? "ExternalLink"}
-                        className="w-4 h-4"
+                        className="size-4"
                       />
-                    </button>
+                    </TooltipIconButton>
                   );
                 })}
               {!isStopped && (
-                <button
-                  type="button"
+                <TooltipIconButton
+                  variant="ghost"
+                  tooltip="Split view"
+                  className={`h-7 w-7 p-1.5 ${viewMode === "split" ? "bg-muted" : ""}`}
                   onClick={handleSplitMode}
-                  className={`p-1.5 rounded hover:bg-muted ${viewMode === "split" ? "bg-muted" : ""}`}
-                  title="Split view"
                 >
-                  <Columns2 className="w-4 h-4" />
-                </button>
+                  <Columns2 className="size-4" />
+                </TooltipIconButton>
               )}
             </>
           )}
@@ -553,18 +556,18 @@ export const TskPane: FC<TskPaneProps> = ({
             <code className="bg-muted px-1.5 py-0.5 rounded flex-1 truncate">
               {task.branch_name}
             </code>
-            <button
-              type="button"
+            <TooltipIconButton
+              variant="ghost"
+              tooltip="Copy branch name"
+              className="h-6 w-6 p-1"
               onClick={() => handleCopy(task.branch_name, "branch")}
-              className="p-1 rounded hover:bg-muted"
-              title="Copy branch name"
             >
               {copiedField === "branch" ? (
-                <CheckCheck className="w-3 h-3 text-green-500" />
+                <CheckCheck className="size-3 text-green-500" />
               ) : (
-                <Copy className="w-3 h-3" />
+                <Copy className="size-3" />
               )}
-            </button>
+            </TooltipIconButton>
           </div>
           {task.submodules && task.submodules.length > 0 && (
             <div className="flex items-center gap-2">
@@ -630,8 +633,9 @@ export const TskPane: FC<TskPaneProps> = ({
             <div className="flex items-center gap-2 pt-1">
               <span className="text-muted-foreground w-16">Open:</span>
               <div className="flex gap-2">
-                <button
-                  type="button"
+                <Button
+                  variant="link"
+                  className="h-auto p-0 text-blue-500 gap-1"
                   onClick={() => {
                     if (task.copied_repo_path)
                       openPath.mutate({
@@ -639,13 +643,13 @@ export const TskPane: FC<TskPaneProps> = ({
                         target: "explorer",
                       });
                   }}
-                  className="text-blue-500 hover:underline flex items-center gap-1 cursor-pointer"
                 >
-                  <FolderOpen className="w-3 h-3" />
+                  <FolderOpen className="size-3" />
                   Explorer
-                </button>
-                <button
-                  type="button"
+                </Button>
+                <Button
+                  variant="link"
+                  className="h-auto p-0 text-blue-500 gap-1"
                   onClick={() => {
                     if (task.copied_repo_path)
                       openPath.mutate({
@@ -653,11 +657,10 @@ export const TskPane: FC<TskPaneProps> = ({
                         target: "vscode",
                       });
                   }}
-                  className="text-blue-500 hover:underline flex items-center gap-1 cursor-pointer"
                 >
-                  <Code className="w-3 h-3" />
+                  <Code className="size-3" />
                   VS Code
-                </button>
+                </Button>
               </div>
             </div>
           )}
@@ -733,56 +736,56 @@ export const TskPane: FC<TskPaneProps> = ({
           <>
             {/* Left pane toolbar */}
             <div
-              className="absolute top-1 flex gap-0.5 bg-background/80 backdrop-blur-sm rounded p-0.5 z-10"
+              className="absolute top-1 flex gap-0.5 bg-background/80 backdrop-blur-sm rounded p-0.5 z-10 opacity-30 hover:opacity-100 transition-opacity"
               style={{ right: "calc(50% + 4px)" }}
             >
               {splitModeOptions.map((opt) => {
                 const isDisabled =
                   opt.mode === "terminal" && splitRight === "terminal";
                 return (
-                  <button
+                  <TooltipIconButton
                     key={opt.mode}
-                    type="button"
-                    onClick={() => !isDisabled && setSplitLeft(opt.mode)}
-                    className={`p-1 rounded ${splitLeft === opt.mode ? "bg-muted" : isDisabled ? "opacity-30 cursor-not-allowed" : "hover:bg-muted/50"}`}
-                    title={
+                    variant="ghost"
+                    tooltip={
                       isDisabled
                         ? "Terminal is shown in the other pane"
                         : opt.label
                     }
+                    className={`h-6 w-6 p-1 ${splitLeft === opt.mode ? "bg-muted" : isDisabled ? "opacity-30 cursor-not-allowed" : ""}`}
+                    onClick={() => !isDisabled && setSplitLeft(opt.mode)}
                   >
                     {opt.mode === "terminal" ? (
-                      <SquareTerminal className="w-3 h-3" />
+                      <SquareTerminal className="size-4" />
                     ) : (
                       <ServiceIcon name={opt.iconName} />
                     )}
-                  </button>
+                  </TooltipIconButton>
                 );
               })}
             </div>
             {/* Right pane toolbar */}
-            <div className="absolute top-1 right-1 flex gap-0.5 bg-background/80 backdrop-blur-sm rounded p-0.5 z-10">
+            <div className="absolute top-1 right-1 flex gap-0.5 bg-background/80 backdrop-blur-sm rounded p-0.5 z-10 opacity-30 hover:opacity-100 transition-opacity">
               {splitModeOptions.map((opt) => {
                 const isDisabled =
                   opt.mode === "terminal" && splitLeft === "terminal";
                 return (
-                  <button
+                  <TooltipIconButton
                     key={opt.mode}
-                    type="button"
-                    onClick={() => !isDisabled && setSplitRight(opt.mode)}
-                    className={`p-1 rounded ${splitRight === opt.mode ? "bg-muted" : isDisabled ? "opacity-30 cursor-not-allowed" : "hover:bg-muted/50"}`}
-                    title={
+                    variant="ghost"
+                    tooltip={
                       isDisabled
                         ? "Terminal is shown in the other pane"
                         : opt.label
                     }
+                    className={`h-6 w-6 p-1 ${splitRight === opt.mode ? "bg-muted" : isDisabled ? "opacity-30 cursor-not-allowed" : ""}`}
+                    onClick={() => !isDisabled && setSplitRight(opt.mode)}
                   >
                     {opt.mode === "terminal" ? (
-                      <SquareTerminal className="w-3 h-3" />
+                      <SquareTerminal className="size-4" />
                     ) : (
                       <ServiceIcon name={opt.iconName} />
                     )}
-                  </button>
+                  </TooltipIconButton>
                 );
               })}
             </div>
@@ -819,20 +822,12 @@ export const TskPane: FC<TskPaneProps> = ({
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <button
-              type="button"
-              onClick={() => setShowStopDialog(false)}
-              className="px-4 py-2 rounded text-sm hover:bg-muted"
-            >
+            <Button variant="ghost" onClick={() => setShowStopDialog(false)}>
               Cancel
-            </button>
-            <button
-              type="button"
-              onClick={handleStopConfirm}
-              className="px-4 py-2 rounded text-sm bg-red-600 text-white hover:bg-red-700"
-            >
+            </Button>
+            <Button variant="destructive" onClick={handleStopConfirm}>
               {isActiveTask ? "Stop" : "Delete"}
-            </button>
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

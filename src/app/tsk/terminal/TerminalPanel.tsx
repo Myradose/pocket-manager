@@ -1,5 +1,10 @@
 import { Plus, RotateCw, SquareTerminal, X } from "lucide-react";
 import { type FC, useCallback, useEffect, useRef, useState } from "react";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { XTerminal } from "./XTerminal";
 import "./terminal.css";
 
@@ -183,7 +188,7 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
             tabIndex={0}
             aria-selected={activeTabName === tab.name}
           >
-            <SquareTerminal className="w-3.5 h-3.5 shrink-0 opacity-60" />
+            <SquareTerminal className="size-3.5 shrink-0 opacity-60" />
             <span>{tab.displayName}</span>
             {tab.closable ? (
               <button
@@ -195,7 +200,7 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
                 }}
                 aria-label={`Close ${tab.displayName}`}
               >
-                <X className="w-3 h-3" />
+                <X className="size-3" />
               </button>
             ) : (
               <button
@@ -207,19 +212,23 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
                 }}
                 aria-label={`Restart ${tab.displayName}`}
               >
-                <RotateCw className="w-3 h-3" />
+                <RotateCw className="size-3" />
               </button>
             )}
           </div>
         ))}
-        <button
-          type="button"
-          className="terminal-tab-new"
-          onClick={createTab}
-          title="New terminal"
-        >
-          <Plus className="w-3.5 h-3.5" />
-        </button>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className="terminal-tab-new"
+              onClick={createTab}
+            >
+              <Plus className="size-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>New terminal</TooltipContent>
+        </Tooltip>
       </div>
 
       {/* Terminal area */}

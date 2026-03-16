@@ -29,7 +29,7 @@ export const defaultServiceLabel = (key: string): string => {
 
 export const ServiceIcon: FC<{ name: string; className?: string }> = ({
   name,
-  className = "w-3 h-3",
+  className = "size-3.5",
 }) => {
   const Icon = iconMap[name] ?? ExternalLink;
   return <Icon className={className} />;

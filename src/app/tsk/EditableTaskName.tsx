@@ -1,5 +1,7 @@
 import { Check, Loader2, Pencil, Sparkles, X } from "lucide-react";
 import { type FC, useRef, useState } from "react";
+import { Input } from "@/components/ui/input";
+import { TooltipIconButton } from "@/components/ui/tooltip-icon-button";
 import { useRenameTskTask, useSuggestTskTaskName } from "./queries";
 
 type EditableTaskNameProps = {
@@ -55,77 +57,88 @@ export const EditableTaskName: FC<EditableTaskNameProps> = ({
   if (isEditing) {
     return (
       <div className="flex items-center gap-1 min-w-0">
-        <input
+        <Input
           ref={inputRef}
           type="text"
           value={editValue}
           onChange={(e) => setEditValue(e.target.value)}
           onKeyDown={handleKeyDown}
           onBlur={handleSave}
-          className="px-1.5 py-0.5 rounded border bg-background text-sm font-medium font-mono w-64"
+          className="h-6 px-1.5 py-0.5 text-sm font-medium font-mono w-64"
         />
-        <button
-          type="button"
+        <TooltipIconButton
+          variant="ghost"
+          tooltip="Save"
+          className="h-5 w-5 p-0.5 text-green-600"
           onMouseDown={(e) => {
             e.preventDefault();
             handleSave();
           }}
-          className="p-0.5 rounded hover:bg-muted text-green-600"
-          title="Save"
         >
-          <Check className="w-3 h-3" />
-        </button>
-        <button
-          type="button"
+          <Check className="size-3" />
+        </TooltipIconButton>
+        <TooltipIconButton
+          variant="ghost"
+          tooltip="Cancel"
+          className="h-5 w-5 p-0.5 text-muted-foreground"
           onMouseDown={(e) => {
             e.preventDefault();
             setIsEditing(false);
           }}
-          className="p-0.5 rounded hover:bg-muted text-muted-foreground"
-          title="Cancel"
         >
-          <X className="w-3 h-3" />
-        </button>
+          <X className="size-3" />
+        </TooltipIconButton>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-1 min-w-0 group/name">
+    <div className="flex items-center min-w-0 group/name">
       <span
         className={`${className} ${isAutoNamed ? "italic text-muted-foreground" : ""}`}
       >
         {name}
       </span>
-      <button
-        type="button"
-        onClick={() => startEditing()}
-        className="p-0.5 rounded hover:bg-muted text-muted-foreground opacity-0 group-hover/name:opacity-100 transition-opacity shrink-0"
-        title="Rename task"
-      >
-        <Pencil className="w-3 h-3" />
-      </button>
-      <button
-        type="button"
-        onClick={handleSuggest}
-        disabled={suggestName.isPending}
-        className={`p-0.5 rounded hover:bg-muted shrink-0 disabled:opacity-50 ${
-          isAutoNamed
-            ? "text-amber-500 opacity-100"
-            : "text-muted-foreground opacity-0 group-hover/name:opacity-100 transition-opacity"
-        }`}
-        title={
-          isAutoNamed
-            ? "Auto-named — click to suggest a name (AI)"
-            : "Suggest name (AI)"
-        }
-      >
-        {suggestName.isPending ? (
-          <Loader2 className="w-3 h-3 animate-spin" />
-        ) : (
-          <Sparkles className="w-3 h-3" />
+      {isAutoNamed && (
+        <TooltipIconButton
+          variant="ghost"
+          tooltip="Auto-named — click to suggest a name (AI)"
+          className="h-5 w-5 p-0.5 text-amber-500 ml-1 shrink-0 disabled:opacity-50"
+          onClick={handleSuggest}
+          disabled={suggestName.isPending}
+        >
+          {suggestName.isPending ? (
+            <Loader2 className="size-3 animate-spin" />
+          ) : (
+            <Sparkles className="size-3" />
+          )}
+        </TooltipIconButton>
+      )}
+      <div className="hidden group-hover/name:flex items-center gap-0.5 ml-1 shrink-0">
+        <TooltipIconButton
+          variant="ghost"
+          tooltip="Rename task"
+          className="h-5 w-5 p-0.5 text-muted-foreground"
+          onClick={() => startEditing()}
+        >
+          <Pencil className="size-3" />
+        </TooltipIconButton>
+        {!isAutoNamed && (
+          <TooltipIconButton
+            variant="ghost"
+            tooltip="Suggest name (AI)"
+            className="h-5 w-5 p-0.5 text-muted-foreground disabled:opacity-50"
+            onClick={handleSuggest}
+            disabled={suggestName.isPending}
+          >
+            {suggestName.isPending ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <Sparkles className="size-3" />
+            )}
+          </TooltipIconButton>
         )}
-      </button>
+      </div>
     </div>
   );
 };
