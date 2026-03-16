@@ -27,7 +27,7 @@ export const XTerminal: FC<XTerminalProps> = ({
   visibleRef.current = visible;
   const [displaced, setDisplaced] = useState(false);
   const displacedRef = useRef(false);
-  const [_reconnectKey, setReconnectKey] = useState(0);
+  const [reconnectKey, setReconnectKey] = useState(0);
 
   // Phase 1: Create terminal, measure exact dimensions.
   // Runs once on mount.
@@ -146,7 +146,9 @@ export const XTerminal: FC<XTerminalProps> = ({
   }, []);
 
   // Phase 2: Ensure tmux session and connect WebSocket with reconnection.
+  // reconnectKey is included in deps so "Take Control" can force a fresh connection.
   useEffect(() => {
+    void reconnectKey;
     if (!terminalRef.current || !containerRef.current) return;
     const terminal = terminalRef.current;
     const container = containerRef.current;
@@ -310,7 +312,7 @@ export const XTerminal: FC<XTerminalProps> = ({
         }
       }
     };
-  }, [taskId, tmuxSessionName, autoCommand]);
+  }, [taskId, tmuxSessionName, autoCommand, reconnectKey]);
 
   // Re-fit when becoming visible (e.g. switching tabs, split pane).
   // Double rAF ensures the browser has fully laid out the container
