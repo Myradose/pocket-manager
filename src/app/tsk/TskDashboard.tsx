@@ -260,27 +260,6 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
     [taskViewModes],
   );
 
-  // Touch LRU when active view mode changes (move to most recently used)
-  useEffect(() => {
-    setGridPanelLru((prev) => {
-      let changed = false;
-      let next = prev;
-      for (const [taskId, mode] of Object.entries(taskViewModes)) {
-        const key = toPanelKey(taskId, mode);
-        const idx = next.indexOf(key);
-        if (idx >= 0 && idx !== next.length - 1) {
-          if (!changed) {
-            next = [...next];
-            changed = true;
-          }
-          next.splice(idx, 1);
-          next.push(key);
-        }
-      }
-      return changed ? next : prev;
-    });
-  }, [taskViewModes]);
-
   // Toggle for showing tool calls overlay on VNC
   const [showToolsOverlay, setShowToolsOverlay] = useState(true);
 
@@ -302,10 +281,37 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
   const displayConfig: Record<string, ServiceDisplayConfig> =
     serviceDisplayConfig ?? {};
 
-  // Update a single task's view mode
-  const setTaskViewMode = useCallback((taskId: string, mode: GridViewMode) => {
-    setTaskViewModes((prev) => ({ ...prev, [taskId]: mode }));
-  }, []);
+  // Update a single task's view mode and add both old+new modes to the grid LRU
+  const setTaskViewMode = useCallback(
+    (taskId: string, mode: GridViewMode) => {
+      const oldMode = taskViewModes[taskId] ?? "terminal";
+      setTaskViewModes((prev) => ({ ...prev, [taskId]: mode }));
+      // Add old mode (so it persists after switch) and new mode (touch as most recent)
+      setGridPanelLru((prev) => {
+        const oldKey = toPanelKey(taskId, oldMode);
+        const newKey = toPanelKey(taskId, mode);
+        const next = prev.filter((k) => k !== oldKey && k !== newKey);
+        // Old mode first (less recent), new mode last (most recent)
+        if (oldMode !== mode) next.push(oldKey);
+        next.push(newKey);
+        // Evict if over cap — never evict a task's current active mode
+        while (next.length > GRID_PANEL_LRU_CAP) {
+          const evictIdx = next.findIndex((k) => {
+            const parsed = fromPanelKey(k);
+            // Protect the new active mode for this task
+            if (parsed.taskId === taskId) return parsed.mode !== mode;
+            // Protect other tasks' active modes
+            const activeMode = taskViewModes[parsed.taskId] ?? "terminal";
+            return parsed.mode !== activeMode;
+          });
+          if (evictIdx === -1) break;
+          next.splice(evictIdx, 1);
+        }
+        return next;
+      });
+    },
+    [taskViewModes],
+  );
 
   // Update a single task's scroll position
   const setTaskScrollPosition = useCallback(
@@ -498,6 +504,31 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
       newModes[t.id] = mode;
     });
     setTaskViewModes(newModes);
+    // Add old modes to LRU so they persist, and new mode as most recent
+    setGridPanelLru((prev) => {
+      const keysToRemove = new Set<PanelKey>();
+      const toAdd: PanelKey[] = [];
+      for (const t of tasks) {
+        const oldMode = taskViewModes[t.id] ?? "terminal";
+        const oldKey = toPanelKey(t.id, oldMode);
+        const newKey = toPanelKey(t.id, mode);
+        keysToRemove.add(oldKey);
+        keysToRemove.add(newKey);
+        if (oldMode !== mode) toAdd.push(oldKey);
+        toAdd.push(newKey);
+      }
+      const next = prev.filter((k) => !keysToRemove.has(k));
+      next.push(...toAdd);
+      while (next.length > GRID_PANEL_LRU_CAP) {
+        const evictIdx = next.findIndex((k) => {
+          const parsed = fromPanelKey(k);
+          return parsed.mode !== mode;
+        });
+        if (evictIdx === -1) break;
+        next.splice(evictIdx, 1);
+      }
+      return next;
+    });
   };
 
   // Determine global toggle state based on active task modes
