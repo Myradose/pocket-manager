@@ -164,8 +164,8 @@ export const XTerminal: FC<XTerminalProps> = ({
         );
         if (ensureResponse.ok) {
           const data = (await ensureResponse.json()) as { created: boolean };
-          if (reconnectAttempt === 0) {
-            isNewSession = data.created;
+          if (data.created) {
+            isNewSession = true;
           }
         } else {
           if (cancelled) return;
