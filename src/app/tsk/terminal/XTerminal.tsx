@@ -217,9 +217,16 @@ export const XTerminal: FC<XTerminalProps> = ({
           } catch {
             // ignore fit errors
           }
-          container.classList.add("terminal-container--visible");
+          // Don't reveal yet — wait for first onmessage so the cursor
+          // is positioned correctly before the terminal is visible.
           if (visibleRef.current) {
-            sendResize(ws, terminal.cols, terminal.rows);
+            // Tmux skips redraw when dimensions are unchanged, so
+            // briefly shrink by 1 column to force a full repaint.
+            sendResize(ws, Math.max(1, terminal.cols - 1), terminal.rows);
+            setTimeout(() => {
+              if (cancelled || ws.readyState !== WebSocket.OPEN) return;
+              sendResize(ws, terminal.cols, terminal.rows);
+            }, 50);
           }
         });
       };
