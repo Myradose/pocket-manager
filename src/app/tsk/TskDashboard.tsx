@@ -12,7 +12,6 @@ import {
   Settings,
   SquareTerminal,
   Trash2,
-  X,
   XCircle,
 } from "lucide-react";
 import {
@@ -206,10 +205,6 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
   // Toggle for showing tool calls overlay on VNC
   const [showToolsOverlay, setShowToolsOverlay] = useState(true);
 
-  // Single task popup state
-  const [showSingleTaskPopup, setShowSingleTaskPopup] = useState(false);
-  const [popupDismissed, setPopupDismissed] = useState(false);
-
   // Selection and focus mode state (array preserves selection order)
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
   const [isFocusMode, setIsFocusMode] = useState(false);
@@ -331,20 +326,6 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
     });
   }, [tasks, displayConfig]);
 
-  // Show popup when there's only 1 active task and user hasn't dismissed it
-  useEffect(() => {
-    if (
-      tasks.length === 1 &&
-      !popupDismissed &&
-      taskIds.length === 0 &&
-      !isFocusMode
-    ) {
-      setShowSingleTaskPopup(true);
-    } else {
-      setShowSingleTaskPopup(false);
-    }
-  }, [tasks.length, popupDismissed, taskIds.length, isFocusMode]);
-
   // Redirect to grid if specific task IDs were requested but not found
   useEffect(() => {
     if (
@@ -388,18 +369,6 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
     prevTaskIdsRef.current = currentTaskIds;
   }, [activeTasks, taskViewModes]);
 
-  const handleGoToDetail = useCallback(() => {
-    if (tasks.length === 1 && tasks[0]) {
-      navigate({ to: "/tsk", search: { tasks: tasks[0].id } });
-    }
-    setShowSingleTaskPopup(false);
-  }, [tasks, navigate]);
-
-  const handleDismissPopup = useCallback(() => {
-    setPopupDismissed(true);
-    setShowSingleTaskPopup(false);
-  }, []);
-
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
@@ -412,28 +381,6 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
     return (
       <div className="flex items-center justify-center h-screen">
         <p className="text-destructive">Error loading tasks: {error.message}</p>
-      </div>
-    );
-  }
-
-  // Empty state: no active tasks and no stopped tasks
-  if (
-    activeTasks.length === 0 &&
-    stoppedTasks.length === 0 &&
-    taskIds.length === 0
-  ) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen gap-4">
-        <p className="text-muted-foreground">No tasks found.</p>
-        <p className="text-sm text-muted-foreground">
-          Start a task with{" "}
-          <code className="bg-muted px-1 rounded">tsk run --serve</code> or
-          specify task IDs in the URL.
-        </p>
-        <div className="flex items-center gap-3">
-          <CreateTaskDialog />
-          <WorkspaceSelector />
-        </div>
       </div>
     );
   }
@@ -533,8 +480,8 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
     );
   }
 
-  // No active tasks but stopped tasks exist — stopped list is the main content
-  if (tasks.length === 0 && stoppedTasks.length > 0) {
+  // No active tasks — show create prompt with stopped tasks if any
+  if (tasks.length === 0 && taskIds.length === 0) {
     return (
       <div className="h-screen w-screen overflow-hidden bg-background flex flex-col">
         <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30">
@@ -547,24 +494,30 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
           <div className="px-4 pt-6 pb-3">
             <p className="text-muted-foreground">No active tasks running.</p>
             <p className="text-sm text-muted-foreground mt-1">
-              Continue a stopped task or start a new one.
+              {stoppedTasks.length > 0
+                ? "Continue a stopped task or create a new one."
+                : "Create a new task to get started."}
             </p>
           </div>
-          <div className="px-3 pb-2 text-sm font-medium text-muted-foreground">
-            Stopped ({stoppedTasks.length})
-          </div>
-          <div className="flex-1 overflow-y-auto px-1 pb-2">
-            {stoppedTasks.map((task) => (
-              <StoppedTaskRow key={task.id} task={task} />
-            ))}
-          </div>
+          {stoppedTasks.length > 0 && (
+            <>
+              <div className="px-3 pb-2 text-sm font-medium text-muted-foreground">
+                Stopped ({stoppedTasks.length})
+              </div>
+              <div className="flex-1 overflow-y-auto px-1 pb-2">
+                {stoppedTasks.map((task) => (
+                  <StoppedTaskRow key={task.id} task={task} />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen w-screen overflow-hidden bg-background flex flex-col relative">
+    <div className="h-screen w-screen overflow-hidden bg-background flex flex-col">
       {/* Header bar */}
       <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30 shrink-0">
         <div className="flex items-center gap-3">
@@ -669,36 +622,6 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
             title="Service display settings"
           >
             <Settings className="w-3 h-3" />
-          </button>
-        </div>
-      </div>
-
-      {/* Single task popup */}
-      <div
-        className={`absolute top-16 left-1/2 -translate-x-1/2 z-50 bg-card border rounded-lg shadow-lg p-4 flex items-center gap-4 transition-all duration-200 ${
-          showSingleTaskPopup
-            ? "opacity-100 scale-100 translate-y-0"
-            : "opacity-0 scale-95 -translate-y-2 pointer-events-none"
-        }`}
-      >
-        <p className="text-sm">
-          Only one task is running. Would you like to view it in detail?
-        </p>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={handleGoToDetail}
-            className="px-3 py-1.5 rounded text-sm bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            Go to detail
-          </button>
-          <button
-            type="button"
-            onClick={handleDismissPopup}
-            className="p-1.5 rounded hover:bg-muted"
-            title="Dismiss"
-          >
-            <X className="w-4 h-4" />
           </button>
         </div>
       </div>

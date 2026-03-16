@@ -15,7 +15,6 @@ import { useWorkspacePath } from "./useWorkspacePath";
 export const CreateTaskDialog: FC = () => {
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
-  const [serve, setServe] = useState(true);
   const [showRepoOverride, setShowRepoOverride] = useState(false);
   const [repoOverride, setRepoOverride] = useState("");
   const { workspacePath } = useWorkspacePath();
@@ -30,13 +29,12 @@ export const CreateTaskDialog: FC = () => {
       {
         repo_path: effectiveRepoPath,
         name: name || undefined,
-        serve,
+        serve: true,
       },
       {
         onSuccess: () => {
           setOpen(false);
           setName("");
-          setServe(true);
           setShowRepoOverride(false);
           setRepoOverride("");
         },
@@ -118,18 +116,6 @@ export const CreateTaskDialog: FC = () => {
               className="w-full px-3 py-2 rounded border bg-background text-sm"
               placeholder="calm-river"
             />
-          </div>
-          <div className="flex items-center gap-2">
-            <input
-              id="task-serve"
-              type="checkbox"
-              checked={serve}
-              onChange={(e) => setServe(e.target.checked)}
-              className="rounded"
-            />
-            <label htmlFor="task-serve" className="text-sm">
-              Enable serve mode (container stays running)
-            </label>
           </div>
           <DialogFooter>
             <button
