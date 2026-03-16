@@ -10,6 +10,7 @@ import {
   FolderOpen,
   Info,
   Loader2,
+  Maximize2,
   MessageSquare,
   Play,
   Square,
@@ -606,13 +607,17 @@ export const TskPane: FC<TskPaneProps> = ({
           )}
           <div className={`w-2 h-2 rounded-full ${statusColor}`} />
           {isGridView ? (
-            <Link
-              to="/tsk"
-              search={{ tasks: task.id }}
-              className="font-medium truncate text-sm hover:underline"
-            >
-              {task.name}
-            </Link>
+            <>
+              <span className="font-medium truncate text-sm">{task.name}</span>
+              <Link
+                to="/tsk"
+                search={{ tasks: task.id }}
+                className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0"
+                title="Open detail view"
+              >
+                <Maximize2 className="w-3 h-3" />
+              </Link>
+            </>
           ) : (
             <EditableTaskName
               taskId={task.id}
