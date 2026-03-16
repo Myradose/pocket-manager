@@ -1,7 +1,5 @@
-import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
-  ArrowDown,
   Check,
   CheckCheck,
   Code,
@@ -11,7 +9,6 @@ import {
   Info,
   Loader2,
   Maximize2,
-  MessageSquare,
   Play,
   Square,
   SquareTerminal,
@@ -23,7 +20,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
 } from "react";
 import {
@@ -34,11 +30,9 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { ConversationList } from "../projects/[projectId]/sessions/[sessionId]/components/conversationList/ConversationList";
 import { EditableTaskName } from "./EditableTaskName";
 import type { ServiceDisplayConfig, TskTask } from "./queries";
 import {
-  tskTranscriptQuery,
   useContinueTskTask,
   useDeleteTskTask,
   useOpenPath,
@@ -47,7 +41,7 @@ import {
 import { defaultServiceLabel, ServiceIcon } from "./ServiceIcon";
 import { TerminalPanel } from "./terminal/TerminalPanel";
 
-export type GridViewMode = "conversation" | "terminal" | `service:${string}`;
+export type GridViewMode = "terminal" | `service:${string}`;
 type DetailViewMode = GridViewMode | "split";
 
 type TskPaneProps = {
@@ -56,76 +50,15 @@ type TskPaneProps = {
   // Controlled view mode (used for both grid and detail view)
   viewMode?: GridViewMode;
   onViewModeChange?: (mode: GridViewMode) => void;
-  // Whether to show tool calls overlay on VNC
-  showToolsOverlay?: boolean;
   // Selection state for focus mode
   isSelected?: boolean;
   onToggleSelect?: () => void;
   showSelectionControls?: boolean;
-  // Scroll state lifted to parent for persistence across navigation
-  savedScrollPosition?: number;
-  onScrollPositionChange?: (position: number) => void;
-  initialAutoScroll?: boolean;
-  onAutoScrollChange?: (autoScroll: boolean) => void;
   // Service display config from settings
   displayConfig?: Record<string, ServiceDisplayConfig>;
   // Panel mounting controlled by parent (grid view LRU)
   mountedPanels?: Set<GridViewMode>;
   onPanelMount?: (mode: GridViewMode) => void;
-};
-
-// Extract recent tool calls from conversations
-const getRecentToolCalls = (
-  conversations: Array<{ type: string; message?: { content?: unknown } }>,
-  limit = 3,
-) => {
-  const toolCalls: Array<{ name: string; args: string }> = [];
-
-  for (
-    let i = conversations.length - 1;
-    i >= 0 && toolCalls.length < limit;
-    i--
-  ) {
-    const conv = conversations[i];
-    if (!conv) continue;
-    if (conv.type === "assistant" && conv.message?.content) {
-      const content = conv.message.content;
-      if (Array.isArray(content)) {
-        for (const block of content) {
-          if (block.type === "tool_use" && toolCalls.length < limit) {
-            const name = block.name || "unknown";
-            // Summarize args - pick the most relevant field
-            let args = "";
-            if (block.input) {
-              const input = block.input as Record<string, unknown>;
-              if (input.command) args = String(input.command);
-              else if (input.file_path) args = String(input.file_path);
-              else if (input.pattern) args = String(input.pattern);
-              else if (input.url) args = String(input.url);
-              else if (input.prompt) args = String(input.prompt);
-              else if (input.description) args = String(input.description);
-              else {
-                // For other tools, show first key=value pair
-                const keys = Object.keys(input);
-                const key = keys[0];
-                if (key !== undefined) {
-                  const rawVal = input[key];
-                  const val =
-                    typeof rawVal === "string"
-                      ? rawVal
-                      : JSON.stringify(rawVal);
-                  args = `${key}=${val}`;
-                }
-              }
-            }
-            toolCalls.unshift({ name, args });
-          }
-        }
-      }
-    }
-  }
-
-  return toolCalls;
 };
 
 // Format relative time (e.g., "2 min ago")
@@ -182,14 +115,9 @@ export const TskPane: FC<TskPaneProps> = ({
   isGridView = false,
   viewMode: controlledViewMode = "terminal",
   onViewModeChange,
-  showToolsOverlay = true,
   isSelected = false,
   onToggleSelect,
   showSelectionControls = false,
-  savedScrollPosition,
-  onScrollPositionChange,
-  initialAutoScroll,
-  onAutoScrollChange,
   displayConfig = {},
   mountedPanels: externalMountedPanels,
   onPanelMount,
@@ -209,11 +137,6 @@ export const TskPane: FC<TskPaneProps> = ({
   const splitModeOptions = useMemo(() => {
     const opts: { mode: GridViewMode; iconName: string; label: string }[] = [
       { mode: "terminal", iconName: "Terminal", label: "Terminal" },
-      {
-        mode: "conversation",
-        iconName: "MessageSquare",
-        label: "Conversation",
-      },
     ];
     for (const svc of sortedServices) {
       const cfg = displayConfig[svc.key];
@@ -248,7 +171,7 @@ export const TskPane: FC<TskPaneProps> = ({
       !isGridView &&
       (task.status === "STOPPED" || task.status === "FAILED")
     ) {
-      navigate({ to: "/tsk", search: {} });
+      navigate({ to: "/", search: {} });
     }
   }, [task.status, userInitiatedStop, isGridView, navigate]);
 
@@ -260,7 +183,7 @@ export const TskPane: FC<TskPaneProps> = ({
     } else {
       deleteTask.mutate(task.id);
       if (!isGridView) {
-        navigate({ to: "/tsk", search: {} });
+        navigate({ to: "/", search: {} });
       }
     }
   }, [task.id, isActiveTask, isGridView, stopTask, deleteTask, navigate]);
@@ -269,7 +192,7 @@ export const TskPane: FC<TskPaneProps> = ({
   const [isSplitMode, setIsSplitMode] = useState(false);
   const splitStorageKey = `tsk-split:${task.repo_root}`;
   const [splitLeft, _setSplitLeft] = useState<GridViewMode>("terminal");
-  const [splitRight, _setSplitRight] = useState<GridViewMode>("conversation");
+  const [splitRight, _setSplitRight] = useState<GridViewMode>("terminal");
 
   // Wrap setters to persist split pair to localStorage
   const setSplitLeft = useCallback(
@@ -325,20 +248,6 @@ export const TskPane: FC<TskPaneProps> = ({
   >({});
   const [showInfo, setShowInfo] = useState(false);
   const [copiedField, setCopiedField] = useState<string | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  // Use parent-provided autoScroll state if available, otherwise default to true
-  const [autoScroll, setAutoScrollLocal] = useState(initialAutoScroll ?? true);
-  const [isAtBottom, setIsAtBottom] = useState(true);
-  const prevViewMode = useRef<string | null>(null);
-
-  // Sync autoScroll changes to parent
-  const setAutoScroll = useCallback(
-    (value: boolean) => {
-      setAutoScrollLocal(value);
-      onAutoScrollChange?.(value);
-    },
-    [onAutoScrollChange],
-  );
 
   // Reset split mode when switching to grid view
   useEffect(() => {
@@ -347,19 +256,7 @@ export const TskPane: FC<TskPaneProps> = ({
     }
   }, [isGridView]);
 
-  // Stopped tasks have no container — force to conversation if on a container-dependent mode
   const isStopped = task.status === "STOPPED";
-  useEffect(() => {
-    if (isStopped) {
-      setIsSplitMode(false);
-      if (
-        controlledViewMode === "terminal" ||
-        controlledViewMode.startsWith("service:")
-      ) {
-        onViewModeChange?.("conversation");
-      }
-    }
-  }, [isStopped, controlledViewMode, onViewModeChange]);
 
   // Effective view mode: use split if active (detail only), otherwise use controlled mode
   const effectiveViewMode: DetailViewMode =
@@ -395,50 +292,13 @@ export const TskPane: FC<TskPaneProps> = ({
     onPanelMount,
   ]);
 
-  // Restore scroll position when returning to conversation view
-  useEffect(() => {
-    const wasConversation = prevViewMode.current === "conversation";
-    const isConversation = effectiveViewMode === "conversation";
-
-    // Entering conversation view - restore position after render
-    if (
-      !wasConversation &&
-      isConversation &&
-      savedScrollPosition !== undefined
-    ) {
-      requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-          if (scrollRef.current) {
-            scrollRef.current.scrollTop = savedScrollPosition;
-          }
-        });
-      });
-    }
-
-    prevViewMode.current = effectiveViewMode;
-  }, [effectiveViewMode, savedScrollPosition]);
-
-  // Jump to bottom handler
-  const scrollToBottom = () => {
-    if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-      setIsAtBottom(true);
-      setAutoScroll(true);
-    }
-  };
-
   const handleViewModeChange = (mode: GridViewMode) => {
     if (mode === controlledViewMode && !isSplitMode) {
-      if (mode === "conversation") {
-        // Conversation is pure React state — just scroll to bottom as a refresh
-        scrollToBottom();
-      } else {
-        // Terminal/iframes need actual remount to reconnect WebSocket / reload
-        setPanelGenerations((prev) => ({
-          ...prev,
-          [mode]: (prev[mode] ?? 0) + 1,
-        }));
-      }
+      // Terminal/iframes need actual remount to reconnect WebSocket / reload
+      setPanelGenerations((prev) => ({
+        ...prev,
+        [mode]: (prev[mode] ?? 0) + 1,
+      }));
     }
     setIsSplitMode(false); // Exit split mode when selecting a regular mode
     onViewModeChange?.(mode);
@@ -474,7 +334,7 @@ export const TskPane: FC<TskPaneProps> = ({
           setSplitRight(`service:${visibleServices[0].key}`);
         } else {
           setSplitLeft("terminal");
-          setSplitRight("conversation");
+          setSplitRight("terminal");
         }
       }
     }
@@ -486,56 +346,6 @@ export const TskPane: FC<TskPaneProps> = ({
     setCopiedField(field);
     setTimeout(() => setCopiedField(null), 2000);
   };
-
-  const { data: transcriptData } = useQuery(tskTranscriptQuery(task.id));
-
-  const conversations = useMemo(() => {
-    return transcriptData?.conversations ?? [];
-  }, [transcriptData]);
-
-  const recentToolCalls = useMemo(() => {
-    return getRecentToolCalls(conversations);
-  }, [conversations]);
-
-  // Auto-scroll to bottom when conversations change (only if already at bottom)
-  useEffect(() => {
-    if (!autoScroll || !scrollRef.current || conversations.length === 0) return;
-    if (effectiveViewMode !== "conversation") return;
-
-    // Use double rAF to ensure DOM is fully rendered and measured
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (scrollRef.current) {
-          scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
-        }
-      });
-    });
-  }, [conversations, autoScroll, effectiveViewMode]);
-
-  // Throttled scroll handler to avoid excessive re-renders
-  const lastScrollUpdate = useRef(0);
-  const handleScroll = useCallback(() => {
-    if (!scrollRef.current) return;
-
-    const now = Date.now();
-    // Throttle to ~60fps (16ms) for isAtBottom check, less frequent for position save
-    const { scrollTop, scrollHeight, clientHeight } = scrollRef.current;
-    const atBottom = scrollHeight - scrollTop - clientHeight < 50;
-
-    // Always update isAtBottom for responsive button
-    if (atBottom !== isAtBottom) {
-      setIsAtBottom(atBottom);
-    }
-
-    // Throttle autoScroll and position updates to every 100ms
-    if (now - lastScrollUpdate.current > 100) {
-      lastScrollUpdate.current = now;
-      setAutoScroll(atBottom);
-      onScrollPositionChange?.(scrollTop);
-    }
-  }, [isAtBottom, onScrollPositionChange, setAutoScroll]);
-
-  const getToolResult = () => undefined; // Simplified for now
 
   const statusColor =
     {
@@ -551,26 +361,6 @@ export const TskPane: FC<TskPaneProps> = ({
 
   // Determine effective view mode
   const viewMode = effectiveViewMode;
-
-  // Tool calls overlay component - respect showToolsOverlay prop in both views
-  const shouldShowOverlay = showToolsOverlay;
-
-  const ToolCallsOverlay = () => {
-    if (!shouldShowOverlay || recentToolCalls.length === 0) return null;
-    return (
-      <div className="absolute bottom-0 left-0 right-0 bg-black/80 text-white text-xs p-2 font-mono overflow-hidden">
-        {recentToolCalls.map((tc) => (
-          <div
-            key={`${tc.name}-${tc.args}`}
-            className="overflow-hidden text-ellipsis whitespace-nowrap"
-          >
-            <span className="text-blue-400">{tc.name}</span>
-            {tc.args && <span className="text-gray-400"> {tc.args}</span>}
-          </div>
-        ))}
-      </div>
-    );
-  };
 
   return (
     <div
@@ -601,7 +391,7 @@ export const TskPane: FC<TskPaneProps> = ({
             <>
               <span className="font-medium truncate text-sm">{task.name}</span>
               <Link
-                to="/tsk"
+                to="/"
                 search={{ tasks: task.id }}
                 className="p-0.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground shrink-0"
                 title="Open detail view"
@@ -670,7 +460,7 @@ export const TskPane: FC<TskPaneProps> = ({
           </button>
           <span className="text-muted-foreground mx-1">|</span>
           {isGridView ? (
-            /* Grid view: terminal/conversation/services toggle */
+            /* Grid view: terminal/services toggle */
             <>
               {!isStopped &&
                 (task.status === "SERVING" || task.status === "RUNNING") &&
@@ -684,14 +474,6 @@ export const TskPane: FC<TskPaneProps> = ({
                     <SquareTerminal className="w-4 h-4" />
                   </button>
                 )}
-              <button
-                type="button"
-                onClick={() => handleViewModeChange("conversation")}
-                className={`p-1.5 rounded hover:bg-muted ${viewMode === "conversation" ? "bg-muted" : ""}`}
-                title="Conversation"
-              >
-                <MessageSquare className="w-4 h-4" />
-              </button>
               {!isStopped &&
                 sortedServices.map((svc) => {
                   const cfg = displayConfig[svc.key];
@@ -728,14 +510,6 @@ export const TskPane: FC<TskPaneProps> = ({
                     <SquareTerminal className="w-4 h-4" />
                   </button>
                 )}
-              <button
-                type="button"
-                onClick={() => handleViewModeChange("conversation")}
-                className={`p-1.5 rounded hover:bg-muted ${viewMode === "conversation" ? "bg-muted" : ""}`}
-                title="Conversation"
-              >
-                <MessageSquare className="w-4 h-4" />
-              </button>
               {!isStopped &&
                 sortedServices.map((svc) => {
                   const cfg = displayConfig[svc.key];
@@ -899,57 +673,6 @@ export const TskPane: FC<TskPaneProps> = ({
             : undefined
         }
       >
-        {/* Conversation */}
-        {mountedPanels.has("conversation") && (
-          <div
-            className="overflow-hidden"
-            style={getPanelPositionStyle(
-              "conversation",
-              viewMode,
-              splitLeft,
-              splitRight,
-            )}
-          >
-            <div className="relative h-full">
-              <div
-                ref={scrollRef}
-                onScroll={handleScroll}
-                className="h-full overflow-auto p-2"
-              >
-                {conversations.length > 0 ? (
-                  <ConversationList
-                    conversations={conversations}
-                    getToolResult={getToolResult}
-                    projectId={task.id}
-                    sessionId={task.id}
-                    scheduledJobs={[]}
-                  />
-                ) : (
-                  <div className="flex items-center justify-center h-full">
-                    <p className="text-muted-foreground text-sm">
-                      Waiting for agent output...
-                    </p>
-                  </div>
-                )}
-              </div>
-              {conversations.length > 0 && (
-                <button
-                  type="button"
-                  onClick={scrollToBottom}
-                  className={`absolute bottom-4 right-8 p-2 rounded-full bg-primary text-primary-foreground shadow-lg hover:bg-primary/90 z-10 transition-all duration-200 ${
-                    isAtBottom
-                      ? "opacity-0 pointer-events-none scale-90"
-                      : "opacity-100 scale-100"
-                  }`}
-                  title="Scroll to bottom"
-                >
-                  <ArrowDown className="w-4 h-4" />
-                </button>
-              )}
-            </div>
-          </div>
-        )}
-
         {/* Service iframes — each stays mounted once loaded */}
         {sortedServices.map((svc) => {
           const cfg = displayConfig[svc.key];
@@ -962,29 +685,17 @@ export const TskPane: FC<TskPaneProps> = ({
             splitLeft,
             splitRight,
           );
-          const isVisible = panelStyle.display !== "none";
           return (
             <div
               key={`${svc.key}-${panelGenerations[svcMode] ?? 0}`}
               className="overflow-hidden"
               style={panelStyle}
             >
-              {isVnc ? (
-                <div className="relative h-full">
-                  <iframe
-                    src={svc.url}
-                    className="w-full h-full border-0"
-                    title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
-                  />
-                  {isVisible && <ToolCallsOverlay />}
-                </div>
-              ) : (
-                <iframe
-                  src={svc.url}
-                  className="w-full h-full border-0 bg-white"
-                  title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
-                />
-              )}
+              <iframe
+                src={svc.url}
+                className={`w-full h-full border-0 ${isVnc ? "" : "bg-white"}`}
+                title={`${task.name} ${cfg?.label ?? defaultServiceLabel(svc.key)}`}
+              />
             </div>
           );
         })}
@@ -1040,9 +751,7 @@ export const TskPane: FC<TskPaneProps> = ({
                         : opt.label
                     }
                   >
-                    {opt.mode === "conversation" ? (
-                      <MessageSquare className="w-3 h-3" />
-                    ) : opt.mode === "terminal" ? (
+                    {opt.mode === "terminal" ? (
                       <SquareTerminal className="w-3 h-3" />
                     ) : (
                       <ServiceIcon name={opt.iconName} />
@@ -1068,9 +777,7 @@ export const TskPane: FC<TskPaneProps> = ({
                         : opt.label
                     }
                   >
-                    {opt.mode === "conversation" ? (
-                      <MessageSquare className="w-3 h-3" />
-                    ) : opt.mode === "terminal" ? (
+                    {opt.mode === "terminal" ? (
                       <SquareTerminal className="w-3 h-3" />
                     ) : (
                       <ServiceIcon name={opt.iconName} />

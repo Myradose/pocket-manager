@@ -7,7 +7,6 @@ import {
   Focus,
   FolderOpen,
   Loader2,
-  MessageSquare,
   Play,
   Settings,
   SquareTerminal,
@@ -207,14 +206,6 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
     Record<string, GridViewMode>
   >({});
 
-  // Track individual task scroll positions and autoScroll state
-  const [taskScrollPositions, setTaskScrollPositions] = useState<
-    Record<string, number>
-  >({});
-  const [taskAutoScroll, setTaskAutoScroll] = useState<Record<string, boolean>>(
-    {},
-  );
-
   // Global LRU for grid panel mounting — tracks all mounted panels across grid tasks
   // Ordered oldest-first: index 0 is the least recently used
   const [gridPanelLru, setGridPanelLru] = useState<PanelKey[]>([]);
@@ -259,9 +250,6 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
     },
     [taskViewModes],
   );
-
-  // Toggle for showing tool calls overlay on VNC
-  const [showToolsOverlay, setShowToolsOverlay] = useState(true);
 
   // Selection and focus mode state (array preserves selection order)
   const [selectedTaskIds, setSelectedTaskIds] = useState<string[]>([]);
@@ -311,22 +299,6 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
       });
     },
     [taskViewModes],
-  );
-
-  // Update a single task's scroll position
-  const setTaskScrollPosition = useCallback(
-    (taskId: string, position: number) => {
-      setTaskScrollPositions((prev) => ({ ...prev, [taskId]: position }));
-    },
-    [],
-  );
-
-  // Update a single task's autoScroll state
-  const setTaskAutoScrollState = useCallback(
-    (taskId: string, autoScroll: boolean) => {
-      setTaskAutoScroll((prev) => ({ ...prev, [taskId]: autoScroll }));
-    },
-    [],
   );
 
   // Toggle task selection (maintains selection order)
@@ -419,7 +391,7 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
       !isLoading &&
       !error
     ) {
-      navigate({ to: "/tsk", search: {} });
+      navigate({ to: "/", search: {} });
     }
   }, [taskIds.length, allFilteredTasks.length, isLoading, error, navigate]);
 
@@ -584,7 +556,7 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
       {detailTaskId ? (
         <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/30 shrink-0">
           <Link
-            to="/tsk"
+            to="/"
             search={{}}
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
@@ -592,19 +564,6 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
             Back to all tasks
           </Link>
           <div className="flex items-center gap-1">
-            <button
-              type="button"
-              onClick={() => setShowToolsOverlay((prev) => !prev)}
-              className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
-                showToolsOverlay
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
-              }`}
-              title="Toggle tool calls overlay on VNC"
-            >
-              <MessageSquare className="w-3 h-3" />
-              Tools
-            </button>
             <button
               type="button"
               onClick={() => setShowServiceSettings(true)}
@@ -668,18 +627,6 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
               <SquareTerminal className="w-3 h-3" />
               Terminal
             </button>
-            <button
-              type="button"
-              onClick={() => setAllTasksViewMode("conversation")}
-              className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
-                globalState === "conversation"
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
-              }`}
-            >
-              <MessageSquare className="w-3 h-3" />
-              Conversation
-            </button>
             {allServiceKeys.map((key) => {
               const cfg = displayConfig[key];
               if (cfg && !cfg.visible) return null;
@@ -701,19 +648,6 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
               );
             })}
             <span className="text-muted-foreground mx-2">|</span>
-            <button
-              type="button"
-              onClick={() => setShowToolsOverlay((prev) => !prev)}
-              className={`flex items-center gap-1 px-2 py-1 rounded text-sm ${
-                showToolsOverlay
-                  ? "bg-primary text-primary-foreground"
-                  : "hover:bg-muted"
-              }`}
-              title="Toggle tool calls overlay on VNC"
-            >
-              <MessageSquare className="w-3 h-3" />
-              Tools
-            </button>
             <button
               type="button"
               onClick={() => setShowServiceSettings(true)}
@@ -755,25 +689,13 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
                 <TskPane
                   task={task}
                   isGridView={!isDetail}
-                  viewMode={
-                    taskViewModes[task.id] ??
-                    (task.status === "STOPPED" ? "conversation" : "terminal")
-                  }
+                  viewMode={taskViewModes[task.id] ?? "terminal"}
                   onViewModeChange={(mode) => setTaskViewMode(task.id, mode)}
-                  showToolsOverlay={showToolsOverlay}
                   isSelected={!isDetail && selectedTaskIds.includes(task.id)}
                   onToggleSelect={
                     !isDetail ? () => toggleTaskSelection(task.id) : undefined
                   }
                   showSelectionControls={!isDetail && !isFocusMode}
-                  savedScrollPosition={taskScrollPositions[task.id]}
-                  onScrollPositionChange={(pos) =>
-                    setTaskScrollPosition(task.id, pos)
-                  }
-                  initialAutoScroll={taskAutoScroll[task.id]}
-                  onAutoScrollChange={(auto) =>
-                    setTaskAutoScrollState(task.id, auto)
-                  }
                   displayConfig={displayConfig}
                   mountedPanels={
                     !isDetail ? getTaskMountedPanels(task.id) : undefined

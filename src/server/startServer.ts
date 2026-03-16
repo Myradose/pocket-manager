@@ -4,34 +4,7 @@ import { NodeContext } from "@effect/platform-node";
 import { serve } from "@hono/node-server";
 import { serveStatic } from "@hono/node-server/serve-static";
 import { Effect } from "effect";
-import { AgentSessionLayer } from "./core/agent-session";
-import { AgentSessionController } from "./core/agent-session/presentation/AgentSessionController";
-import { ClaudeCodeController } from "./core/claude-code/presentation/ClaudeCodeController";
-import { ClaudeCodePermissionController } from "./core/claude-code/presentation/ClaudeCodePermissionController";
-import { ClaudeCodeSessionProcessController } from "./core/claude-code/presentation/ClaudeCodeSessionProcessController";
-import { ClaudeCodeLifeCycleService } from "./core/claude-code/services/ClaudeCodeLifeCycleService";
-import { ClaudeCodePermissionService } from "./core/claude-code/services/ClaudeCodePermissionService";
-import { ClaudeCodeService } from "./core/claude-code/services/ClaudeCodeService";
-import { ClaudeCodeSessionProcessService } from "./core/claude-code/services/ClaudeCodeSessionProcessService";
-import { SSEController } from "./core/events/presentation/SSEController";
-import { FileWatcherService } from "./core/events/services/fileWatcher";
-import { FeatureFlagController } from "./core/feature-flag/presentation/FeatureFlagController";
-import { FileSystemController } from "./core/file-system/presentation/FileSystemController";
-import { GitController } from "./core/git/presentation/GitController";
-import { GitService } from "./core/git/services/GitService";
 import type { CliOptions } from "./core/platform/services/CcvOptionsService";
-import { ProjectRepository } from "./core/project/infrastructure/ProjectRepository";
-import { ProjectController } from "./core/project/presentation/ProjectController";
-import { ProjectMetaService } from "./core/project/services/ProjectMetaService";
-import { SchedulerConfigBaseDir } from "./core/scheduler/config";
-import { SchedulerService } from "./core/scheduler/domain/Scheduler";
-import { SchedulerController } from "./core/scheduler/presentation/SchedulerController";
-import { SearchController } from "./core/search/presentation/SearchController";
-import { SearchService } from "./core/search/services/SearchService";
-import { SessionRepository } from "./core/session/infrastructure/SessionRepository";
-import { VirtualConversationDatabase } from "./core/session/infrastructure/VirtualConversationDatabase";
-import { SessionController } from "./core/session/presentation/SessionController";
-import { SessionMetaService } from "./core/session/services/SessionMetaService";
 import { TerminalController } from "./core/terminal/presentation/TerminalController";
 import { TerminalCleanupService } from "./core/terminal/services/TerminalCleanupService";
 import { TerminalSessionService } from "./core/terminal/services/TerminalSessionService";
@@ -39,8 +12,6 @@ import { TskController } from "./core/tsk/presentation/TskController";
 import { ServiceDisplayConfigService } from "./core/tsk/services/ServiceDisplayConfigService";
 import { TskService } from "./core/tsk/services/TskService";
 import { honoApp, injectWebSocket } from "./hono/app";
-import { InitializeService } from "./hono/initialize";
-import { AuthMiddleware } from "./hono/middleware/auth.middleware";
 import { routes } from "./hono/route";
 import { platformLayer } from "./lib/effect/layers";
 
@@ -70,53 +41,17 @@ export const startServer = async (options: CliOptions) => {
   }
 
   const program = routes(honoApp, options)
-    // 依存の浅い順にコンテナに pipe する必要がある
     .pipe(
       /** Presentation */
-      Effect.provide(ProjectController.Live),
-      Effect.provide(SessionController.Live),
-      Effect.provide(AgentSessionController.Live),
-      Effect.provide(GitController.Live),
-      Effect.provide(ClaudeCodeController.Live),
-      Effect.provide(ClaudeCodeSessionProcessController.Live),
-      Effect.provide(ClaudeCodePermissionController.Live),
-      Effect.provide(FileSystemController.Live),
-      Effect.provide(SSEController.Live),
-      Effect.provide(SchedulerController.Live),
-      Effect.provide(FeatureFlagController.Live),
-      Effect.provide(SearchController.Live),
       Effect.provide(TskController.Live),
       Effect.provide(TerminalController.Live),
     )
     .pipe(
-      /** Application */
-      Effect.provide(InitializeService.Live),
-      Effect.provide(FileWatcherService.Live),
-      Effect.provide(AuthMiddleware.Live),
-    )
-    .pipe(
       /** Domain */
-      Effect.provide(ClaudeCodeLifeCycleService.Live),
-      Effect.provide(ClaudeCodePermissionService.Live),
-      Effect.provide(ClaudeCodeSessionProcessService.Live),
-      Effect.provide(ClaudeCodeService.Live),
-      Effect.provide(GitService.Live),
-      Effect.provide(SchedulerService.Live),
-      Effect.provide(SchedulerConfigBaseDir.Live),
-      Effect.provide(SearchService.Live),
       Effect.provide(TskService.Live),
       Effect.provide(ServiceDisplayConfigService.Live),
       Effect.provide(TerminalCleanupService.Live),
       Effect.provide(TerminalSessionService.Live),
-    )
-    .pipe(
-      /** Infrastructure */
-      Effect.provide(ProjectRepository.Live),
-      Effect.provide(SessionRepository.Live),
-      Effect.provide(ProjectMetaService.Live),
-      Effect.provide(SessionMetaService.Live),
-      Effect.provide(VirtualConversationDatabase.Live),
-      Effect.provide(AgentSessionLayer),
     )
     .pipe(
       /** Platform */

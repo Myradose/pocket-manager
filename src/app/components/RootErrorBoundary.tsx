@@ -11,17 +11,11 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { HttpError } from "../../lib/api/client";
 
 export const RootErrorBoundary: FC<PropsWithChildren> = ({ children }) => {
   return (
     <ErrorBoundary
       FallbackComponent={({ error, resetErrorBoundary }) => {
-        if (error instanceof HttpError && error.status === 401) {
-          window.location.href = "/login";
-          return null;
-        }
-
         return (
           <div className="flex min-h-screen items-center justify-center p-4">
             <Card className="w-full max-w-2xl">
@@ -57,7 +51,7 @@ export const RootErrorBoundary: FC<PropsWithChildren> = ({ children }) => {
                     variant="outline"
                   >
                     <Home />
-                    Go to Home
+                    Go to Dashboard
                   </Button>
                 </div>
               </CardContent>

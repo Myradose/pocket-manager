@@ -1,5 +1,4 @@
 import { Context, Effect, Layer, Ref } from "effect";
-import { DEFAULT_LOCALE } from "../../../../lib/i18n/localeDetection";
 import type { UserConfig } from "../../../lib/config/config";
 import type { InferEffect } from "../../../lib/effect/types";
 
@@ -9,7 +8,7 @@ const LayerImpl = Effect.gen(function* () {
     unifySameTitleSession: false,
     enterKeyBehavior: "shift-enter-send",
     permissionMode: "default",
-    locale: DEFAULT_LOCALE,
+    locale: "en",
     theme: "system",
     searchHotkey: "command-k",
   });

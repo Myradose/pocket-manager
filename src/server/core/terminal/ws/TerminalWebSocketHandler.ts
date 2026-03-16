@@ -108,6 +108,23 @@ export const handleTerminalWebSocket = (
               typeof control.rows === "number"
             ) {
               attachment.pty.resize(control.cols, control.rows);
+              // Refresh copy-mode buffer after resize so reflowed
+              // content displays correctly (no-op if not in copy mode).
+              // Debounce: only fire after resizing stops.
+              if (attachment.refreshTimer)
+                clearTimeout(attachment.refreshTimer);
+              attachment.refreshTimer = setTimeout(async () => {
+                attachment.refreshTimer = undefined;
+                try {
+                  const { execSync } = await import("node:child_process");
+                  execSync(
+                    `docker exec ${attachment.containerId} tmux if -F '#{pane_in_mode}' 'send-keys -X refresh-from-pane' ''`,
+                    { timeout: 3000 },
+                  );
+                } catch {
+                  // ignore — tmux < 3.2 or not in copy mode
+                }
+              }, 300);
             }
           } catch {
             // Invalid control message, ignore

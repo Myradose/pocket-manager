@@ -9,104 +9,38 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as TskRouteImport } from './routes/tsk'
-import { Route as LoginRouteImport } from './routes/login'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ProjectsIndexRouteImport } from './routes/projects/index'
-import { Route as ProjectsProjectIdSessionRouteImport } from './routes/projects/$projectId/session'
 
-const TskRoute = TskRouteImport.update({
-  id: '/tsk',
-  path: '/tsk',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const LoginRoute = LoginRouteImport.update({
-  id: '/login',
-  path: '/login',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ProjectsIndexRoute = ProjectsIndexRouteImport.update({
-  id: '/projects/',
-  path: '/projects/',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProjectsProjectIdSessionRoute =
-  ProjectsProjectIdSessionRouteImport.update({
-    id: '/projects/$projectId/session',
-    path: '/projects/$projectId/session',
-    getParentRoute: () => rootRouteImport,
-  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
-  '/login': typeof LoginRoute
-  '/tsk': typeof TskRoute
-  '/projects': typeof ProjectsIndexRoute
-  '/projects/$projectId/session': typeof ProjectsProjectIdSessionRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
-  '/login': typeof LoginRoute
-  '/tsk': typeof TskRoute
-  '/projects': typeof ProjectsIndexRoute
-  '/projects/$projectId/session': typeof ProjectsProjectIdSessionRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
-  '/login': typeof LoginRoute
-  '/tsk': typeof TskRoute
-  '/projects/': typeof ProjectsIndexRoute
-  '/projects/$projectId/session': typeof ProjectsProjectIdSessionRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths:
-    | '/'
-    | '/login'
-    | '/tsk'
-    | '/projects'
-    | '/projects/$projectId/session'
+  fullPaths: '/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/login' | '/tsk' | '/projects' | '/projects/$projectId/session'
-  id:
-    | '__root__'
-    | '/'
-    | '/login'
-    | '/tsk'
-    | '/projects/'
-    | '/projects/$projectId/session'
+  to: '/'
+  id: '__root__' | '/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
-  LoginRoute: typeof LoginRoute
-  TskRoute: typeof TskRoute
-  ProjectsIndexRoute: typeof ProjectsIndexRoute
-  ProjectsProjectIdSessionRoute: typeof ProjectsProjectIdSessionRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/tsk': {
-      id: '/tsk'
-      path: '/tsk'
-      fullPath: '/tsk'
-      preLoaderRoute: typeof TskRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/login': {
-      id: '/login'
-      path: '/login'
-      fullPath: '/login'
-      preLoaderRoute: typeof LoginRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -114,29 +48,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/projects/': {
-      id: '/projects/'
-      path: '/projects'
-      fullPath: '/projects'
-      preLoaderRoute: typeof ProjectsIndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/projects/$projectId/session': {
-      id: '/projects/$projectId/session'
-      path: '/projects/$projectId/session'
-      fullPath: '/projects/$projectId/session'
-      preLoaderRoute: typeof ProjectsProjectIdSessionRouteImport
-      parentRoute: typeof rootRouteImport
-    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
-  LoginRoute: LoginRoute,
-  TskRoute: TskRoute,
-  ProjectsIndexRoute: ProjectsIndexRoute,
-  ProjectsProjectIdSessionRoute: ProjectsProjectIdSessionRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

@@ -5,16 +5,12 @@ export type CliOptions = {
   port: string;
   hostname: string;
   password?: string | undefined;
-  executable?: string | undefined;
-  claudeDir?: string | undefined;
 };
 
 export type CcvOptions = {
   port: number;
   hostname: string;
   password?: string | undefined;
-  executable?: string | undefined;
-  claudeDir?: string | undefined;
 };
 
 const getOptionalEnv = (key: string): string | undefined => {
@@ -37,12 +33,6 @@ const LayerImpl = Effect.gen(function* () {
             cliOptions.hostname ?? getOptionalEnv("HOSTNAME") ?? "localhost",
           password:
             cliOptions.password ?? getOptionalEnv("CCV_PASSWORD") ?? undefined,
-          executable:
-            cliOptions.executable ??
-            getOptionalEnv("CCV_CC_EXECUTABLE_PATH") ??
-            undefined,
-          claudeDir:
-            cliOptions.claudeDir ?? getOptionalEnv("CCV_GLOBAL_CLAUDE_DIR"),
         };
       });
     });

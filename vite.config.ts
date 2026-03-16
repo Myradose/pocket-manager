@@ -1,5 +1,4 @@
 import { fileURLToPath, URL } from "node:url";
-import { lingui } from "@lingui/vite-plugin";
 import tailwindcss from "@tailwindcss/vite";
 import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import viteReact from "@vitejs/plugin-react-swc";
@@ -15,7 +14,6 @@ export default defineConfig({
       autoCodeSplitting: true,
     }),
     viteReact(),
-    lingui(),
     tailwindcss(),
   ],
   resolve: {

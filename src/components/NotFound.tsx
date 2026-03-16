@@ -1,4 +1,3 @@
-import { Trans } from "@lingui/react";
 import { FileQuestion, Home } from "lucide-react";
 import type { FC, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
@@ -16,8 +15,8 @@ interface NotFoundProps {
 }
 
 export const NotFound: FC<NotFoundProps> = ({
-  message = <Trans id="notfound.default.title" />,
-  description = <Trans id="notfound.default.description" />,
+  message = "Page not found",
+  description = "The page you are looking for does not exist.",
 }) => {
   return (
     <div className="flex min-h-screen items-center justify-center p-4">
@@ -40,7 +39,7 @@ export const NotFound: FC<NotFoundProps> = ({
               variant="default"
             >
               <Home />
-              <Trans id="notfound.button.go_home" />
+              Go to Dashboard
             </Button>
           </div>
         </CardContent>

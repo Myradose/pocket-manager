@@ -2,11 +2,6 @@
 
 ## Critical Rules (Read First)
 
-**Communication**:
-- Always communicate with users in Japanese (日本語)
-- Code, comments, and commit messages should be in English
-- This document is in English for context efficiency
-
 **NEVER**:
 - Use `as` type casting in ANY context including test code (explain the problem to the user instead)
 - Use raw `fetch` or bypass TanStack Query for API calls
@@ -21,13 +16,14 @@
 
 ## Project Overview
 
-Claude Code Viewer reads Claude Code session logs directly from JSONL files (`~/.claude/projects/`) with zero data loss. It's a web-based client built as a CLI tool serving a Vite application.
+TSK Dashboard is a web UI to monitor, spawn, and observe tsk agent environments. It provides
+terminal access, service iframe views, and a 3-up comparison layout for parallel agents.
 
 **Core Architecture**:
 - Frontend: Vite + TanStack Router + React 19 + TanStack Query
 - Backend: Hono (standalone server) + Effect-TS (all business logic)
-- Data: Direct JSONL reads with strict Zod validation
-- Real-time: Server-Sent Events (SSE) for live updates
+- Terminal: xterm.js + node-pty via WebSocket
+- Single route: `/tsk` — the dashboard
 
 ## Development Workflow
 
@@ -54,11 +50,12 @@ pnpm test
 
 ## Key Directory Patterns
 
-- `src/server/hono/route.ts` - Hono API routes definition (all routes defined here)
-- `src/server/core/` - Effect-TS business logic (domain modules: session, project, git, etc.)
-- `src/lib/conversation-schema/` - Zod schemas for JSONL validation
-- `src/testing/layers/` - Reusable Effect test layers (`testPlatformLayer` is the foundation)
-- `src/routes/` - TanStack Router routes
+- `src/server/hono/route.ts` - Hono API routes definition (config, tsk, terminal only)
+- `src/server/core/tsk/` - TSK task management (spawn, stop, continue, rename)
+- `src/server/core/terminal/` - Terminal sessions (WebSocket, node-pty)
+- `src/server/core/platform/` - Platform services (config, env, options)
+- `src/app/tsk/` - TSK dashboard UI components
+- `src/routes/` - TanStack Router routes (only `/tsk`)
 
 ## Coding Standards
 
@@ -66,40 +63,19 @@ pnpm test
 
 **Prioritize Pure Functions**:
 - Extract logic into pure, testable functions whenever possible
-- Pure functions are easier to test, reason about, and maintain
 - Only use Effect-TS when side effects or state management is required
 
 **Use Effect-TS for Side Effects and State**:
 - Mandatory for I/O operations, async code, and stateful logic
-- Avoid class-based implementations or mutable variables for state
-- Use Effect-TS's functional patterns for state management
 - Reference: https://effect.website/llms.txt
-
-**Testing with Layers**:
-```typescript
-import { expect, test } from "vitest"
-import { Effect } from "effect"
-import { testPlatformLayer } from "@/testing/layers"
-import { yourEffect } from "./your-module"
-
-test("example", async () => {
-  const result = await Effect.runPromise(
-    yourEffect.pipe(Effect.provide(testPlatformLayer))
-  )
-  expect(result).toBe(expectedValue)
-})
-```
 
 **Avoid Node.js Built-ins**:
 - Use `FileSystem.FileSystem` instead of `node:fs`
 - Use `Path.Path` instead of `node:path`
 - Use `Command.string` instead of `child_process`
 
-This enables dependency injection and proper testing.
-
 **Type Safety - NO `as` Casting**:
 - `as` casting is **strictly prohibited**
-- If types seem unsolvable without `as`, explain the problem to the user and ask for guidance
 - Valid alternatives: type guards, assertion functions, Zod schema validation
 
 ### Frontend: API Access
@@ -125,29 +101,30 @@ Raw `fetch` and direct requests are prohibited.
 
 ## Architecture Details
 
-### SSE (Server-Sent Events)
+### API Routes (Hono)
 
-**When to Use SSE**:
-- Delivering session log updates to frontend
-- Notifying clients of background process state changes
-- **Never** for request-response patterns (use Hono RPC instead)
+All routes in `src/server/hono/route.ts`:
+- `GET/PUT /api/config` — user config (theme, etc.)
+- `GET /api/version` — package version
+- `GET/POST/DELETE /api/tsk/tasks` — task CRUD
+- `POST /api/tsk/tasks/:id/stop|continue` — task lifecycle
+- `PATCH /api/tsk/tasks/:id/rename` — rename task
+- `POST /api/tsk/tasks/:id/suggest-name` — AI name suggestion
+- `POST /api/tsk/open` — open path in explorer/vscode
+- `GET/PUT /api/tsk/service-config` — service display settings
+- `POST/GET/DELETE /api/tsk/tasks/:id/terminals` — terminal CRUD
+- `GET /api/tsk/tasks/:id/terminals/:name/ws` — terminal WebSocket
 
-**Implementation**:
-- Server: `/api/sse` endpoint with type-safe events (`TypeSafeSSE`)
-- Client: `useServerEventListener` hook for subscriptions
+### Effect-TS Layers (Bottom-up DI)
 
-### Data Layer
-
-- **Single Source of Truth**: `~/.claude/projects/*.jsonl`
-- **Cache**: `~/.claude-code-viewer/` (invalidated via SSE when source changes)
-- **Validation**: Strict Zod schemas ensure every field is captured
-
-### Session Process Management
-
-Claude Code processes remain alive in the background (unless aborted), allowing session continuation without changing session-id.
+```
+Platform: UserConfigService, EnvService, CcvOptionsService
+Domain:   TskService, ServiceDisplayConfigService, TerminalCleanupService, TerminalSessionService
+Present:  TskController, TerminalController
+```
 
 ## Development Tips
 
-1. **Session Logs**: Examine `~/.claude/projects/` JSONL files to understand data structures
-2. **Mock Data**: `mock-global-claude-dir/` contains E2E test mocks (useful reference for schema examples)
-3. **Effect-TS Help**: https://effect.website/llms.txt
+1. **Effect-TS Help**: https://effect.website/llms.txt
+2. **Terminal debugging**: Check WebSocket connection in browser devtools Network tab
+3. **Service views**: Configured via `GET/PUT /api/tsk/service-config`, persisted per project path

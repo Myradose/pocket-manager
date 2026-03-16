@@ -8,6 +8,7 @@ export type PtyAttachment = {
   // biome-ignore lint/suspicious/noExplicitAny: node-pty IPty type is complex native type
   pty: any;
   cleanupTimer?: ReturnType<typeof setTimeout>;
+  refreshTimer?: ReturnType<typeof setTimeout>;
   dataListenerDispose?: () => void;
   /** Multiple WebSocket clients can listen to the same PTY */
   dataListeners: Map<string, (data: string) => void>;
