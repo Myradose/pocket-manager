@@ -9,6 +9,10 @@ export type PtyAttachment = {
   pty: any;
   cleanupTimer?: ReturnType<typeof setTimeout>;
   dataListenerDispose?: () => void;
+  /** Multiple WebSocket clients can listen to the same PTY */
+  dataListeners: Map<string, (data: string) => void>;
+  /** Dispose the single onData handler that fans out to all listeners */
+  masterListenerDispose?: () => void;
 };
 
 const ptyAttachmentKey = (containerId: string, tmuxName: string) =>
@@ -73,6 +77,7 @@ const LayerImpl = Effect.gen(function* () {
         const existing = attachments.get(key);
         if (existing) {
           if (existing.cleanupTimer) clearTimeout(existing.cleanupTimer);
+          if (existing.masterListenerDispose) existing.masterListenerDispose();
           if (existing.dataListenerDispose) existing.dataListenerDispose();
           try {
             existing.pty.kill();
@@ -104,6 +109,7 @@ const LayerImpl = Effect.gen(function* () {
         const existing = attachments.get(key);
         if (existing) {
           if (existing.cleanupTimer) clearTimeout(existing.cleanupTimer);
+          if (existing.masterListenerDispose) existing.masterListenerDispose();
           if (existing.dataListenerDispose) existing.dataListenerDispose();
           try {
             existing.pty.kill();
@@ -147,7 +153,16 @@ const LayerImpl = Effect.gen(function* () {
           tmuxSessionName: name,
           taskId,
           pty: ptyProcess,
+          dataListeners: new Map(),
         };
+
+        // Master onData listener that fans out to all registered listeners
+        const masterDisposable = ptyProcess.onData((data: string) => {
+          for (const listener of attachment.dataListeners.values()) {
+            listener(data);
+          }
+        });
+        attachment.masterListenerDispose = () => masterDisposable.dispose();
 
         attachments.set(key, attachment);
 
@@ -173,6 +188,8 @@ const LayerImpl = Effect.gen(function* () {
       const attachment = attachments.get(key);
       if (attachment) {
         if (attachment.cleanupTimer) clearTimeout(attachment.cleanupTimer);
+        if (attachment.masterListenerDispose)
+          attachment.masterListenerDispose();
         if (attachment.dataListenerDispose) attachment.dataListenerDispose();
         try {
           attachment.pty.kill();
@@ -194,6 +211,8 @@ const LayerImpl = Effect.gen(function* () {
       if (attachment) {
         if (attachment.cleanupTimer) clearTimeout(attachment.cleanupTimer);
         attachment.cleanupTimer = setTimeout(() => {
+          if (attachment.masterListenerDispose)
+            attachment.masterListenerDispose();
           if (attachment.dataListenerDispose) attachment.dataListenerDispose();
           try {
             attachment.pty.kill();

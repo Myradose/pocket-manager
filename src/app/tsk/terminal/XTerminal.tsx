@@ -23,6 +23,8 @@ export const XTerminal: FC<XTerminalProps> = ({
   const fitAddonRef = useRef<FitAddon | null>(null);
   const terminalRef = useRef<Terminal | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
 
   // Phase 1: Create terminal, measure exact dimensions.
   // Runs once on mount.
@@ -102,7 +104,9 @@ export const XTerminal: FC<XTerminalProps> = ({
     });
 
     // Keep the terminal fitted and forward resize to the backend.
+    // Only send resize when visible to avoid tmux size conflicts with other terminals.
     const resizeObserver = new ResizeObserver(() => {
+      if (!visibleRef.current) return;
       try {
         fitAddon.fit();
         const ws = wsRef.current;
@@ -198,24 +202,27 @@ export const XTerminal: FC<XTerminalProps> = ({
           container.classList.add("terminal-container--visible");
         });
 
-        // Send exact dimensions
-        ws.send(
-          `\x00${JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows })}`,
-        );
-
-        // Bounce resize to force tmux redraw on reconnect
-        setTimeout(() => {
-          if (cancelled || ws.readyState !== WebSocket.OPEN) return;
+        // Only send resize when visible to avoid tmux size conflicts
+        if (visibleRef.current) {
+          // Send exact dimensions
           ws.send(
-            `\x00${JSON.stringify({ type: "resize", cols: Math.max(1, terminal.cols - 1), rows: terminal.rows })}`,
+            `\x00${JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows })}`,
           );
+
+          // Bounce resize to force tmux redraw on reconnect
           setTimeout(() => {
             if (cancelled || ws.readyState !== WebSocket.OPEN) return;
             ws.send(
-              `\x00${JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows })}`,
+              `\x00${JSON.stringify({ type: "resize", cols: Math.max(1, terminal.cols - 1), rows: terminal.rows })}`,
             );
-          }, 100);
-        }, 500);
+            setTimeout(() => {
+              if (cancelled || ws.readyState !== WebSocket.OPEN) return;
+              ws.send(
+                `\x00${JSON.stringify({ type: "resize", cols: terminal.cols, rows: terminal.rows })}`,
+              );
+            }, 100);
+          }, 500);
+        }
       };
 
       let autoCommandSent = false;
@@ -275,11 +282,15 @@ export const XTerminal: FC<XTerminalProps> = ({
     };
   }, [taskId, tmuxSessionName, autoCommand]);
 
-  // Re-fit when becoming visible (e.g. switching tabs).
+  // Re-fit when becoming visible (e.g. switching tabs, split pane).
+  // Double rAF ensures the browser has fully laid out the container
+  // before measuring dimensions — needed when emerging from display:none.
   useEffect(() => {
     if (visible && fitAddonRef.current) {
       requestAnimationFrame(() => {
-        fitAddonRef.current?.fit();
+        requestAnimationFrame(() => {
+          fitAddonRef.current?.fit();
+        });
       });
     }
   }, [visible]);

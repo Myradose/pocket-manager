@@ -51,6 +51,7 @@ const mockTerminalSessionServiceLayer = Layer.mock(TerminalSessionService, {
       tmuxSessionName: "claude",
       taskId: "task1",
       pty: {},
+      dataListeners: new Map(),
     }),
   getPtyAttachment: () => Effect.succeed(null),
   detachPty: () => Effect.succeed(undefined),

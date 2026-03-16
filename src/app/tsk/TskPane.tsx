@@ -142,6 +142,7 @@ const formatRelativeTime = (dateString: string | null): string => {
 
 const SplitPane: FC<{
   mode: GridViewMode;
+  otherMode: GridViewMode;
   onModeChange: (mode: GridViewMode) => void;
   task: TskTask;
   // biome-ignore lint/suspicious/noExplicitAny: conversations type comes from parsed JSONL
@@ -152,6 +153,7 @@ const SplitPane: FC<{
   displayConfig?: Record<string, ServiceDisplayConfig>;
 }> = ({
   mode,
+  otherMode,
   onModeChange,
   task,
   conversations,
@@ -229,7 +231,7 @@ const SplitPane: FC<{
         </div>
       </div>
 
-      {/* Terminal */}
+      {/* Terminal — stays mounted, only sends resize when visible */}
       {task.container_id && (
         <div
           className="absolute inset-0"
@@ -272,23 +274,29 @@ const SplitPane: FC<{
       })}
 
       <div className="absolute top-1 right-1 flex gap-0.5 bg-background/80 backdrop-blur-sm rounded p-0.5 z-10">
-        {splitModeOptions.map((opt) => (
-          <button
-            key={opt.mode}
-            type="button"
-            onClick={() => onModeChange(opt.mode)}
-            className={`p-1 rounded ${mode === opt.mode ? "bg-muted" : "hover:bg-muted/50"}`}
-            title={opt.label}
-          >
-            {opt.mode === "conversation" ? (
-              <MessageSquare className="w-3 h-3" />
-            ) : opt.mode === "terminal" ? (
-              <SquareTerminal className="w-3 h-3" />
-            ) : (
-              <ServiceIcon name={opt.iconName} />
-            )}
-          </button>
-        ))}
+        {splitModeOptions.map((opt) => {
+          const isDisabled =
+            opt.mode === "terminal" && otherMode === "terminal";
+          return (
+            <button
+              key={opt.mode}
+              type="button"
+              onClick={() => !isDisabled && onModeChange(opt.mode)}
+              className={`p-1 rounded ${mode === opt.mode ? "bg-muted" : isDisabled ? "opacity-30 cursor-not-allowed" : "hover:bg-muted/50"}`}
+              title={
+                isDisabled ? "Terminal is shown in the other pane" : opt.label
+              }
+            >
+              {opt.mode === "conversation" ? (
+                <MessageSquare className="w-3 h-3" />
+              ) : opt.mode === "terminal" ? (
+                <SquareTerminal className="w-3 h-3" />
+              ) : (
+                <ServiceIcon name={opt.iconName} />
+              )}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -1087,6 +1095,7 @@ export const TskPane: FC<TskPaneProps> = ({
               <div className="grid grid-cols-2 h-full">
                 <SplitPane
                   mode={splitLeft}
+                  otherMode={splitRight}
                   onModeChange={setSplitLeft}
                   task={task}
                   conversations={conversations}
@@ -1097,6 +1106,7 @@ export const TskPane: FC<TskPaneProps> = ({
                 />
                 <SplitPane
                   mode={splitRight}
+                  otherMode={splitLeft}
                   onModeChange={setSplitRight}
                   task={task}
                   conversations={conversations}
