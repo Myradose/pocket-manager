@@ -14,6 +14,7 @@ import {
   XCircle,
 } from "lucide-react";
 import {
+  type DragEvent,
   type FC,
   useCallback,
   useEffect,
@@ -44,6 +45,7 @@ import {
 import { defaultServiceLabel, ServiceIcon } from "./ServiceIcon";
 import { ServiceSettingsDialog } from "./ServiceSettingsDialog";
 import { type GridViewMode, TskPane } from "./TskPane";
+import { useGridOrder } from "./useGridOrder";
 import { useWorkspacePath } from "./useWorkspacePath";
 
 type TskDashboardProps = {
@@ -443,13 +445,81 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
   const detailTaskId = isDetailView ? (allFilteredTasks[0]?.id ?? null) : null;
 
   // Include the detail task in the render list even if it's stopped (not in `tasks`)
-  const renderTasks = useMemo(() => {
+  const renderTasksUnordered = useMemo(() => {
     if (!detailTaskId) return tasks;
     if (tasks.some((t) => t.id === detailTaskId)) return tasks;
     const detailTask = allFilteredTasks.find((t) => t.id === detailTaskId);
     if (!detailTask) return tasks;
     return [detailTask, ...tasks];
   }, [detailTaskId, allFilteredTasks, tasks]);
+
+  // Persisted grid order
+  const { orderedTaskIds, reorder, syncOrder } = useGridOrder(
+    workspacePath || "",
+  );
+
+  // Sync persisted order when active tasks change
+  useEffect(() => {
+    if (!detailTaskId && renderTasksUnordered.length > 0) {
+      syncOrder(renderTasksUnordered.map((t) => t.id));
+    }
+  }, [detailTaskId, renderTasksUnordered, syncOrder]);
+
+  // Apply persisted order
+  const renderTasks = useMemo(() => {
+    if (detailTaskId) return renderTasksUnordered;
+    if (orderedTaskIds.length === 0) return renderTasksUnordered;
+    const taskMap = new Map(renderTasksUnordered.map((t) => [t.id, t]));
+    const ordered: TskTask[] = [];
+    for (const id of orderedTaskIds) {
+      const t = taskMap.get(id);
+      if (t) {
+        ordered.push(t);
+        taskMap.delete(id);
+      }
+    }
+    // Append any tasks not in persisted order
+    for (const t of taskMap.values()) {
+      ordered.push(t);
+    }
+    return ordered;
+  }, [detailTaskId, renderTasksUnordered, orderedTaskIds]);
+
+  // Drag-and-drop state for grid reordering
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const handleGridDragStart = useCallback((index: number) => {
+    setDragIndex(index);
+  }, []);
+
+  const handleGridDragOver = useCallback(
+    (e: DragEvent, index: number) => {
+      e.preventDefault();
+      if (dragIndex === null || dragIndex === index) return;
+      setDragOverIndex(index);
+    },
+    [dragIndex],
+  );
+
+  const handleGridDrop = useCallback(
+    (index: number) => {
+      if (dragIndex === null || dragIndex === index) {
+        setDragIndex(null);
+        setDragOverIndex(null);
+        return;
+      }
+      reorder(dragIndex, index);
+      setDragIndex(null);
+      setDragOverIndex(null);
+    },
+    [dragIndex, reorder],
+  );
+
+  const handleGridDragEnd = useCallback(() => {
+    setDragIndex(null);
+    setDragOverIndex(null);
+  }, []);
 
   if (isLoading) {
     return (
@@ -687,31 +757,44 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
                 }
           }
         >
-          {renderTasks.map((task) => {
+          {renderTasks.map((task, index) => {
             const isDetail = task.id === detailTaskId;
             const isHidden = detailTaskId != null && !isDetail;
+            const isGrid = !isDetail;
+            const isDragging = isGrid && dragIndex === index;
+            const isDragOver = isGrid && dragOverIndex === index;
             return (
               <div
                 key={task.id}
-                className={isDetail ? "h-full" : ""}
+                draggable={isGrid}
+                onDragStart={
+                  isGrid ? () => handleGridDragStart(index) : undefined
+                }
+                onDragOver={
+                  isGrid ? (e) => handleGridDragOver(e, index) : undefined
+                }
+                onDrop={isGrid ? () => handleGridDrop(index) : undefined}
+                onDragEnd={isGrid ? handleGridDragEnd : undefined}
+                className={`${isDetail ? "h-full" : ""} ${isDragging ? "opacity-40" : ""} ${isDragOver ? "ring-2 ring-primary ring-dashed rounded-lg" : ""}`}
                 style={isHidden ? { display: "none" } : undefined}
               >
                 <TskPane
                   task={task}
-                  isGridView={!isDetail}
+                  isGridView={isGrid}
+                  isDraggable={isGrid}
                   viewMode={taskViewModes[task.id] ?? "terminal"}
                   onViewModeChange={(mode) => setTaskViewMode(task.id, mode)}
-                  isSelected={!isDetail && selectedTaskIds.includes(task.id)}
+                  isSelected={isGrid && selectedTaskIds.includes(task.id)}
                   onToggleSelect={
-                    !isDetail ? () => toggleTaskSelection(task.id) : undefined
+                    isGrid ? () => toggleTaskSelection(task.id) : undefined
                   }
-                  showSelectionControls={!isDetail && !isFocusMode}
+                  showSelectionControls={isGrid && !isFocusMode}
                   displayConfig={displayConfig}
                   mountedPanels={
-                    !isDetail ? getTaskMountedPanels(task.id) : undefined
+                    isGrid ? getTaskMountedPanels(task.id) : undefined
                   }
                   onPanelMount={
-                    !isDetail
+                    isGrid
                       ? (mode) => handleGridPanelMount(task.id, mode)
                       : undefined
                   }

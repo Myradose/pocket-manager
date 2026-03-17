@@ -5,6 +5,7 @@ import {
   Columns2,
   Copy,
   FolderOpen,
+  GripVertical,
   Info,
   Loader2,
   Maximize2,
@@ -54,6 +55,8 @@ type DetailViewMode = GridViewMode | "split";
 type TskPaneProps = {
   task: TskTask;
   isGridView?: boolean;
+  // Show drag handle in header (grid view)
+  isDraggable?: boolean;
   // Controlled view mode (used for both grid and detail view)
   viewMode?: GridViewMode;
   onViewModeChange?: (mode: GridViewMode) => void;
@@ -120,6 +123,7 @@ function getPanelPositionStyle(
 export const TskPane: FC<TskPaneProps> = ({
   task,
   isGridView = false,
+  isDraggable = false,
   viewMode: controlledViewMode = "terminal",
   onViewModeChange,
   isSelected = false,
@@ -376,6 +380,9 @@ export const TskPane: FC<TskPaneProps> = ({
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-2 border-b bg-muted/50">
         <div className="flex items-center gap-2 min-w-0">
+          {isDraggable && (
+            <GripVertical className="size-3.5 text-muted-foreground cursor-grab shrink-0" />
+          )}
           {showSelectionControls && onToggleSelect && (
             <Checkbox
               checked={isSelected}
