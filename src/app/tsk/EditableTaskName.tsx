@@ -117,7 +117,7 @@ export const EditableTaskName: FC<EditableTaskNameProps> = ({
       <div className="hidden group-hover/name:flex items-center gap-0.5 ml-1 shrink-0">
         <TooltipIconButton
           variant="ghost"
-          tooltip="Rename task"
+          tooltip="Rename pocket"
           className="h-5 w-5 p-0.5 text-muted-foreground"
           onClick={() => startEditing()}
         >

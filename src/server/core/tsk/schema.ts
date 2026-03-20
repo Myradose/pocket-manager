@@ -7,6 +7,7 @@ export const createTaskRequestSchema = z.object({
   agent: z.string().optional(),
   stack: z.string().optional(),
   serve: z.boolean().optional(),
+  from_task: z.string().optional(),
 });
 
 export type CreateTaskRequest = z.infer<typeof createTaskRequestSchema>;

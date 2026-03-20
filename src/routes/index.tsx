@@ -17,7 +17,7 @@ function RouteComponent() {
 
   return (
     <>
-      <title>TSK Dashboard</title>
+      <title>Pocket Dashboard</title>
       <TskDashboard taskIds={taskIds} />
     </>
   );

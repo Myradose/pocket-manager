@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Focus,
   FolderOpen,
+  GitFork,
   Loader2,
   Play,
   Settings,
@@ -153,6 +154,7 @@ const formatRelativeTime = (dateString: string | null): string => {
 const StoppedTaskRow: FC<{ task: TskTask }> = ({ task }) => {
   const continueTask = useContinueTskTask();
   const deleteTask = useDeleteTskTask();
+  const [showForkDialog, setShowForkDialog] = useState(false);
 
   const statusColor =
     {
@@ -181,7 +183,7 @@ const StoppedTaskRow: FC<{ task: TskTask }> = ({ task }) => {
       <div className="flex items-center gap-1 shrink-0">
         <TooltipIconButton
           variant="ghost"
-          tooltip="Continue task"
+          tooltip="Continue pocket"
           className="h-6 w-6 p-1 text-green-600 hover:bg-green-100 dark:hover:bg-green-900/30"
           onClick={() => continueTask.mutate(task.id)}
           disabled={isResuming}
@@ -194,7 +196,15 @@ const StoppedTaskRow: FC<{ task: TskTask }> = ({ task }) => {
         </TooltipIconButton>
         <TooltipIconButton
           variant="ghost"
-          tooltip="Delete task"
+          tooltip="Fork pocket"
+          className="h-6 w-6 p-1 text-blue-500 hover:bg-blue-100 dark:hover:bg-blue-900/30 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={() => setShowForkDialog(true)}
+        >
+          <GitFork className="size-3.5" />
+        </TooltipIconButton>
+        <TooltipIconButton
+          variant="ghost"
+          tooltip="Delete pocket"
           className="h-6 w-6 p-1 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/30 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={() => deleteTask.mutate(task.id)}
           disabled={deleteTask.isPending}
@@ -202,6 +212,15 @@ const StoppedTaskRow: FC<{ task: TskTask }> = ({ task }) => {
           <Trash2 className="size-3.5" />
         </TooltipIconButton>
       </div>
+      <CreateTaskDialog
+        forkFrom={{
+          taskId: task.id,
+          repoRoot: task.repo_root,
+          taskName: task.name,
+        }}
+        open={showForkDialog}
+        onOpenChange={setShowForkDialog}
+      />
     </div>
   );
 };
@@ -524,7 +543,7 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <p className="text-muted-foreground">Loading TSK tasks...</p>
+        <p className="text-muted-foreground">Loading pockets...</p>
       </div>
     );
   }
@@ -532,7 +551,9 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
   if (error) {
     return (
       <div className="flex items-center justify-center h-screen">
-        <p className="text-destructive">Error loading tasks: {error.message}</p>
+        <p className="text-destructive">
+          Error loading pockets: {error.message}
+        </p>
       </div>
     );
   }
@@ -608,11 +629,11 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
         </div>
         <div className="flex-1 flex flex-col min-h-0">
           <div className="px-4 pt-6 pb-3">
-            <p className="text-muted-foreground">No active tasks running.</p>
+            <p className="text-muted-foreground">No active pockets running.</p>
             <p className="text-sm text-muted-foreground mt-1">
               {stoppedTasks.length > 0
-                ? "Continue a stopped task or create a new one."
-                : "Create a new task to get started."}
+                ? "Continue a stopped pocket or create a new one."
+                : "Create a new pocket to get started."}
             </p>
           </div>
           {stoppedTasks.length > 0 && (
@@ -643,7 +664,7 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
             className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground"
           >
             <ArrowLeft className="size-4" />
-            Back to all tasks
+            Back to all pockets
           </Link>
           <div className="flex items-center gap-1">
             <TooltipIconButton
@@ -665,7 +686,7 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
               {isFocusMode
                 ? `${tasks.length} focused`
                 : `${activeTasks.length} active`}{" "}
-              {tasks.length === 1 ? "task" : "tasks"}
+              {tasks.length === 1 ? "pocket" : "pockets"}
             </span>
             {!isFocusMode && selectedTaskIds.length > 0 && (
               <span className="text-xs text-muted-foreground">
@@ -695,7 +716,7 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
           </div>
           <div className="flex items-center gap-1">
             <span className="text-xs text-muted-foreground mr-2">
-              All tasks:
+              All pockets:
             </span>
             <ToggleGroup
               type="single"

@@ -142,7 +142,8 @@ const LayerImpl = Effect.gen(function* () {
           body: JSON.stringify(body),
         });
         if (!response.ok) {
-          throw new Error(`tsk API returned ${response.status}`);
+          const errorBody = await response.text();
+          throw new Error(`tsk API returned ${response.status}: ${errorBody}`);
         }
         return (await response.json()) as object;
       },

@@ -234,10 +234,7 @@ export const ServiceSettingsDialog: FC<ServiceSettingsDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        className="max-w-lg"
-        onOpenAutoFocus={(e) => e.preventDefault()}
-      >
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Service Display Settings</DialogTitle>
         </DialogHeader>

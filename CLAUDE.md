@@ -123,6 +123,18 @@ Domain:   TskService, ServiceDisplayConfigService, TerminalCleanupService, Termi
 Present:  TskController, TerminalController
 ```
 
+## tsk HTTP API
+
+The viewer communicates with tsk via its HTTP API. Start the tsk server before running the viewer:
+
+```bash
+tsk server start --http-port 7354
+```
+
+- `--http-port` enables the HTTP API (default port: `7354`, env: `TSK_HTTP_PORT`)
+- API base URL: `http://127.0.0.1:7354`
+- Additional flags: `-w/--workers` (parallel workers), `-q/--quit` (exit when queue empty), `-s/--sound` (completion sound)
+
 ## Development Tips
 
 1. **Effect-TS Help**: https://effect.website/llms.txt

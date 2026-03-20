@@ -5,6 +5,7 @@ import {
   Columns2,
   Copy,
   FolderOpen,
+  GitFork,
   GripVertical,
   Info,
   Loader2,
@@ -38,6 +39,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { TooltipIconButton } from "@/components/ui/tooltip-icon-button";
+import { CreateTaskDialog } from "./CreateTaskDialog";
 import { EditableTaskName } from "./EditableTaskName";
 import type { ServiceDisplayConfig, TskTask } from "./queries";
 import {
@@ -167,6 +169,7 @@ export const TskPane: FC<TskPaneProps> = ({
   const openPath = useOpenPath();
   const navigate = useNavigate();
   const [showStopDialog, setShowStopDialog] = useState(false);
+  const [showForkDialog, setShowForkDialog] = useState(false);
 
   const isActiveTask = task.status === "RUNNING" || task.status === "SERVING";
   const [userInitiatedStop, setUserInitiatedStop] = useState(false);
@@ -389,7 +392,7 @@ export const TskPane: FC<TskPaneProps> = ({
               onCheckedChange={() => onToggleSelect()}
               onClick={(e) => e.stopPropagation()}
               className="data-[state=checked]:bg-blue-600 data-[state=checked]:border-blue-600"
-              aria-label={isSelected ? "Deselect task" : "Select task"}
+              aria-label={isSelected ? "Deselect pocket" : "Select pocket"}
             />
           )}
           <div className={`w-2 h-2 rounded-full ${statusColor}`} />
@@ -422,7 +425,7 @@ export const TskPane: FC<TskPaneProps> = ({
           {(isActiveTask || task.status === "QUEUED") && !isTransitioning && (
             <TooltipIconButton
               variant="ghost"
-              tooltip={isActiveTask ? "Stop task" : "Delete task"}
+              tooltip={isActiveTask ? "Stop pocket" : "Delete pocket"}
               className="h-7 w-7 p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"
               onClick={() => setShowStopDialog(true)}
               disabled={stopTask.isPending || deleteTask.isPending}
@@ -438,7 +441,7 @@ export const TskPane: FC<TskPaneProps> = ({
             <>
               <TooltipIconButton
                 variant="ghost"
-                tooltip="Continue task"
+                tooltip="Continue pocket"
                 className="h-7 w-7 p-1.5 hover:bg-green-100 dark:hover:bg-green-900/30 text-green-600"
                 onClick={() => continueTask.mutate(task.id)}
                 disabled={continueTask.isPending}
@@ -451,7 +454,7 @@ export const TskPane: FC<TskPaneProps> = ({
               </TooltipIconButton>
               <TooltipIconButton
                 variant="ghost"
-                tooltip="Delete task"
+                tooltip="Delete pocket"
                 className="h-7 w-7 p-1.5 hover:bg-red-100 dark:hover:bg-red-900/30 text-red-500"
                 onClick={() => setShowStopDialog(true)}
                 disabled={deleteTask.isPending}
@@ -460,9 +463,19 @@ export const TskPane: FC<TskPaneProps> = ({
               </TooltipIconButton>
             </>
           )}
+          {!isTransitioning && (
+            <TooltipIconButton
+              variant="ghost"
+              tooltip="Fork pocket"
+              className="h-7 w-7 p-1.5 hover:bg-blue-100 dark:hover:bg-blue-900/30 text-blue-500"
+              onClick={() => setShowForkDialog(true)}
+            >
+              <GitFork className="size-4" />
+            </TooltipIconButton>
+          )}
           <TooltipIconButton
             variant="ghost"
-            tooltip="Show task info"
+            tooltip="Show pocket info"
             className={`h-7 w-7 p-1.5 ${showInfo ? "bg-muted" : ""}`}
             onClick={() => setShowInfo((prev) => !prev)}
           >
@@ -807,8 +820,8 @@ export const TskPane: FC<TskPaneProps> = ({
             <Loader2 className="h-4 w-4 animate-spin" />
             <span className="text-sm">
               {userInitiatedStop || task.status === "STOPPING"
-                ? "Stopping task..."
-                : "Deleting task..."}
+                ? "Stopping pocket..."
+                : "Deleting pocket..."}
             </span>
           </div>
         </div>
@@ -818,14 +831,14 @@ export const TskPane: FC<TskPaneProps> = ({
         <DialogContent className="max-w-sm">
           <DialogHeader>
             <DialogTitle>
-              {isActiveTask ? "Stop Task" : "Delete Task"}
+              {isActiveTask ? "Stop Pocket" : "Delete Pocket"}
             </DialogTitle>
             <DialogDescription>
               Are you sure you want to {isActiveTask ? "stop" : "delete"}{" "}
               <span className="font-medium text-foreground">{task.name}</span>?
               {isActiveTask
-                ? " This will stop the container and archive the task."
-                : " This will remove the task."}
+                ? " This will stop the container and archive the pocket."
+                : " This will remove the pocket."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -838,6 +851,16 @@ export const TskPane: FC<TskPaneProps> = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      <CreateTaskDialog
+        forkFrom={{
+          taskId: task.id,
+          repoRoot: task.repo_root,
+          taskName: task.name,
+        }}
+        open={showForkDialog}
+        onOpenChange={setShowForkDialog}
+      />
     </div>
   );
 };
