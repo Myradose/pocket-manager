@@ -61,7 +61,6 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
                     ? `Shell ${shellNum}`
                     : s.name,
                 closable: !isClaude,
-                autoCommand: isClaude ? "claude" : undefined,
                 generation: 0,
               };
             });
@@ -158,7 +157,6 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
       name: "claude",
       displayName: "Claude Code",
       closable: false,
-      autoCommand: "claude",
       generation: 0,
     };
     setTabs((prev) => [tab, ...prev]);

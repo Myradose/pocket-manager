@@ -35,6 +35,7 @@ const mockTskServiceLayer = Layer.mock(TskService, {
   deleteTask: () => Effect.succeed({ success: true }),
   stopTask: () => Effect.succeed({ success: true }),
   continueTask: () => Effect.succeed({ id: "task1", status: "QUEUED" }),
+  launchClaudeWhenReady: () => undefined,
 });
 
 const mockServiceDisplayConfigLayer = Layer.mock(ServiceDisplayConfigService, {

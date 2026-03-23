@@ -8,6 +8,7 @@ export const createTaskRequestSchema = z.object({
   stack: z.string().optional(),
   serve: z.boolean().optional(),
   from_task: z.string().optional(),
+  description: z.string().optional(),
 });
 
 export type CreateTaskRequest = z.infer<typeof createTaskRequestSchema>;

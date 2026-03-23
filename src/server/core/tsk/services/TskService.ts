@@ -49,6 +49,69 @@ const getTraefikPort = () =>
     return 8080;
   });
 
+/**
+ * Fire-and-forget: poll until a task's container is ready, then launch Claude
+ * in a tmux session inside the container.
+ */
+const launchClaudeWhenReady = (taskId: string, description?: string) => {
+  (async () => {
+    const port = await Effect.runPromise(getTskApiPort());
+    const MAX_ATTEMPTS = 30;
+
+    for (let i = 0; i < MAX_ATTEMPTS; i++) {
+      await new Promise((r) => setTimeout(r, 2000));
+      try {
+        const resp = await fetch(`http://localhost:${port}/tasks?limit=1000`);
+        if (!resp.ok) continue;
+        const data = (await resp.json()) as { tasks: RawTask[] };
+        const task = data.tasks?.find((t) => t.id === taskId);
+        if (!task?.container_id) continue;
+
+        const cid = task.container_id;
+        const { execSync } = await import("node:child_process");
+
+        // Ensure "claude" tmux session exists
+        try {
+          execSync(`docker exec ${cid} tmux has-session -t claude`, {
+            timeout: 5000,
+          });
+        } catch {
+          execSync(
+            `docker exec ${cid} tmux new-session -d -s claude -x 200 -y 50`,
+            { timeout: 5000 },
+          );
+        }
+
+        // Only send command if the pane is running a shell (not already running claude)
+        const paneCmd = execSync(
+          `docker exec ${cid} tmux list-panes -t claude -F "#{pane_current_command}"`,
+          { encoding: "utf-8", timeout: 5000 },
+        ).trim();
+
+        if (paneCmd === "bash" || paneCmd === "sh" || paneCmd === "zsh") {
+          if (description) {
+            // Pipe prompt to a file inside the container via stdin (no shell escaping needed)
+            execSync(
+              `docker exec -i ${cid} sh -c 'cat > /tmp/.claude-prompt'`,
+              { input: description, timeout: 5000 },
+            );
+            execSync(
+              `docker exec ${cid} tmux send-keys -t claude 'claude "$(cat /tmp/.claude-prompt)"' Enter`,
+              { timeout: 5000 },
+            );
+          } else {
+            execSync(
+              `docker exec ${cid} tmux send-keys -t claude "claude" Enter`,
+              { timeout: 5000 },
+            );
+          }
+        }
+        return;
+      } catch {}
+    }
+  })();
+};
+
 const LayerImpl = Effect.gen(function* () {
   const listTasks = (options?: { repo?: string }) =>
     Effect.tryPromise({
@@ -310,6 +373,7 @@ const LayerImpl = Effect.gen(function* () {
     renameTask,
     suggestName,
     openPath,
+    launchClaudeWhenReady,
   };
 });
 

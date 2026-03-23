@@ -72,6 +72,7 @@ export const useCreateTskTask = () => {
       stack?: string;
       serve?: boolean;
       from_task?: string;
+      description?: string;
     }) => {
       const response = await honoClient.api.tsk.tasks.$post({
         json: request,

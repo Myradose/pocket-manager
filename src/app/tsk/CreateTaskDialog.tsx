@@ -12,6 +12,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { TooltipIconButton } from "@/components/ui/tooltip-icon-button";
 import { useCreateTskTask } from "./queries";
 import { useWorkspacePath } from "./useWorkspacePath";
@@ -33,6 +34,7 @@ export const CreateTaskDialog: FC<CreateTaskDialogProps> = ({
 }) => {
   const [internalOpen, setInternalOpen] = useState(false);
   const [name, setName] = useState("");
+  const [prompt, setPrompt] = useState("");
   const [showRepoOverride, setShowRepoOverride] = useState(false);
   const [repoOverride, setRepoOverride] = useState("");
   const { workspacePath } = useWorkspacePath();
@@ -58,12 +60,14 @@ export const CreateTaskDialog: FC<CreateTaskDialogProps> = ({
         repo_path: effectiveRepoPath,
         name: name || undefined,
         serve: true,
+        description: prompt || undefined,
         ...(forkFrom ? { from_task: forkFrom.taskId } : {}),
       },
       {
         onSuccess: () => {
           setOpen(false);
           setName("");
+          setPrompt("");
           setShowRepoOverride(false);
           setRepoOverride("");
         },
@@ -145,6 +149,21 @@ export const CreateTaskDialog: FC<CreateTaskDialogProps> = ({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="calm-river"
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="task-prompt">
+            Prompt{" "}
+            <span className="text-muted-foreground font-normal">
+              (optional — agent starts immediately on spin-up)
+            </span>
+          </Label>
+          <Textarea
+            id="task-prompt"
+            value={prompt}
+            onChange={(e) => setPrompt(e.target.value)}
+            placeholder="Implement tabs for the Users and Products sections..."
+            className="min-h-24 resize-y text-sm"
           />
         </div>
         <DialogFooter>

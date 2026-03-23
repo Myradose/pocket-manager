@@ -36,6 +36,10 @@ const LayerImpl = Effect.gen(function* () {
           response: { error: result.left.message },
         } as const satisfies ControllerResponse;
       }
+      const taskData = result.right as { id?: string };
+      if (taskData.id) {
+        tskService.launchClaudeWhenReady(taskData.id, request.description);
+      }
       return {
         status: 200,
         response: { data: result.right },
@@ -85,6 +89,7 @@ const LayerImpl = Effect.gen(function* () {
           response: { error: result.left.message },
         } as const satisfies ControllerResponse;
       }
+      tskService.launchClaudeWhenReady(options.taskId);
       return {
         status: 200,
         response: result.right,
