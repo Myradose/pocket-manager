@@ -32,6 +32,7 @@ tsk server start --http-port 7354
 
 ```bash
 bun install
+bun run dev         # Start dev server (frontend + backend)
 bun run typecheck   # Type checking
 bun run fix         # Lint and format (Biome)
 bun run test        # Unit tests
