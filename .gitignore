@@ -49,7 +49,11 @@ dist/*
 .user-data/
 
 # claude code
+CLAUDE.md
 .claude/settings.local.json
+.claude/commands/fix-schema.md
+.claude/commands/i18n-fix.md
+docs/dev.md
 
 # cc-delegate
 .cc-delegate/
