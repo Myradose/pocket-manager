@@ -30,7 +30,6 @@ import {
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
 import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { TooltipIconButton } from "@/components/ui/tooltip-icon-button";
 import { CreateTaskDialog } from "./CreateTaskDialog";
@@ -641,11 +640,11 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
               <div className="px-3 pb-2 text-sm font-medium text-muted-foreground">
                 Stopped ({stoppedTasks.length})
               </div>
-              <ScrollArea className="flex-1 px-1 pb-2">
+              <div className="flex-1 overflow-y-auto min-h-0 px-1 pb-2">
                 {stoppedTasks.map((task) => (
                   <StoppedTaskRow key={task.id} task={task} />
                 ))}
-              </ScrollArea>
+              </div>
             </>
           )}
         </div>
@@ -847,13 +846,13 @@ export const TskDashboard: FC<TskDashboardProps> = ({ taskIds }) => {
             </Button>
           </CollapsibleTrigger>
           <CollapsibleContent>
-            <ScrollArea className="max-h-48">
+            <div className="max-h-48 overflow-y-auto">
               <div className="pb-1">
                 {stoppedTasks.map((task) => (
                   <StoppedTaskRow key={task.id} task={task} />
                 ))}
               </div>
-            </ScrollArea>
+            </div>
           </CollapsibleContent>
         </Collapsible>
       )}
