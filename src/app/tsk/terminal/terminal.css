@@ -53,36 +53,20 @@
   display: none;
 }
 
+/* Scrolling is handled entirely by tmux — hide xterm's own scrollbar.
+   scrollback: 0 means no xterm buffer; wheel events are intercepted
+   and forwarded as tmux scroll commands in XTerminal.tsx. */
 .terminal-container .xterm-viewport {
-  overflow-y: auto;
+  overflow-y: hidden !important;
+  scrollbar-width: none;
+}
+
+.terminal-container .xterm-viewport::-webkit-scrollbar {
+  display: none;
 }
 
 .terminal-container .xterm-screen {
   height: 100%;
-}
-
-/* Custom scrollbar — thin, subtle, blends with terminal */
-.terminal-container .xterm-viewport::-webkit-scrollbar {
-  width: 6px;
-}
-
-.terminal-container .xterm-viewport::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.terminal-container .xterm-viewport::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 3px;
-}
-
-.terminal-container .xterm-viewport::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
-}
-
-/* Firefox */
-.terminal-container .xterm-viewport {
-  scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.1) transparent;
 }
 
 /* Tab bar styles */
