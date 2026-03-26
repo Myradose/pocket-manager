@@ -121,10 +121,42 @@ const LayerImpl = Effect.gen(function* () {
       } as const satisfies ControllerResponse;
     });
 
+  const reconfigureTmux = (options: { taskId: string }) =>
+    Effect.gen(function* () {
+      const resolved = yield* resolveContainerId(options.taskId);
+      if (!resolved.ok) {
+        return {
+          status: resolved.status,
+          response: { error: resolved.error },
+        } as const satisfies ControllerResponse;
+      }
+
+      const result = yield* Effect.either(
+        terminalSessionService.reconfigureTmux(resolved.containerId),
+      );
+
+      if (Either.isLeft(result)) {
+        const errorMsg =
+          result.left instanceof Error
+            ? result.left.message
+            : String(result.left);
+        return {
+          status: 500,
+          response: { error: `Failed to reconfigure tmux: ${errorMsg}` },
+        } as const satisfies ControllerResponse;
+      }
+
+      return {
+        status: 200,
+        response: result.right,
+      } as const satisfies ControllerResponse;
+    });
+
   return {
     ensureTerminal,
     listTerminals,
     destroyTerminal,
+    reconfigureTmux,
   };
 });
 

@@ -47,18 +47,22 @@ export type PtyAttachment = {
   };
 };
 
+// Critical commands use && so failure is detected.
+// Non-critical commands use "|| true" so they can't break the chain.
 const TMUX_CONFIG_COMMANDS = [
-  'tmux set -g default-terminal "tmux-256color"',
-  'tmux set -as terminal-features ",xterm*:RGB"',
-  "tmux set -g history-limit 10000",
+  // --- Critical: mouse + scroll (must succeed) ---
   "tmux set -g mouse on",
-  'tmux set -g mode-style "bg=#264f78,fg=#cccccc"',
-  "tmux unbind -n MouseDown3Pane",
-  "tmux unbind -n M-MouseDown3Pane",
+  "tmux set -g history-limit 10000",
   'tmux bind -Tcopy-mode WheelUpPane select-pane "\\;" send -N1 -X scroll-up',
   'tmux bind -Tcopy-mode WheelDownPane select-pane "\\;" send -N1 -X scroll-down',
   'tmux bind -Tcopy-mode-vi WheelUpPane select-pane "\\;" send -N1 -X scroll-up',
   'tmux bind -Tcopy-mode-vi WheelDownPane select-pane "\\;" send -N1 -X scroll-down',
+  // --- Non-critical: colors, terminal type, unbinds (may fail on older tmux) ---
+  '(tmux set -g default-terminal "tmux-256color" || true)',
+  '(tmux set -as terminal-features ",xterm*:RGB" || true)',
+  '(tmux set -g mode-style "bg=#264f78,fg=#cccccc" || true)',
+  "(tmux unbind -n MouseDown3Pane 2>/dev/null || true)",
+  "(tmux unbind -n M-MouseDown3Pane 2>/dev/null || true)",
 ].join(" && ");
 
 const SAFE_NAME = /^[a-zA-Z0-9_-]+$/;
@@ -147,12 +151,6 @@ const LayerImpl = Effect.gen(function* () {
           new Error(error instanceof Error ? error.message : String(error)),
       });
 
-      if (!configuredContainers.has(containerId)) {
-        yield* applyTmuxConfig(containerId).pipe(
-          Effect.catchAll(() => Effect.void),
-        );
-      }
-
       return result;
     });
 
@@ -178,86 +176,96 @@ const LayerImpl = Effect.gen(function* () {
     cols?: number,
     rows?: number,
   ) =>
-    Effect.tryPromise({
-      try: async () => {
-        assertSafeName(name);
-        const key = ptyAttachmentKey(containerId, name);
-        const existing = attachments.get(key);
-        if (existing) killAttachment(existing);
+    Effect.gen(function* () {
+      // Always apply tmux config on attach — this runs each time a WebSocket
+      // connects and needs a fresh PTY, so a page refresh will re-apply it.
+      if (!configuredContainers.has(containerId)) {
+        yield* applyTmuxConfig(containerId).pipe(
+          Effect.catchAll(() => Effect.void),
+        );
+      }
 
-        const exitCallbacks: Array<() => void> = [];
+      return yield* Effect.tryPromise({
+        try: async () => {
+          assertSafeName(name);
+          const key = ptyAttachmentKey(containerId, name);
+          const existing = attachments.get(key);
+          if (existing) killAttachment(existing);
 
-        const proc = Bun.spawn(
-          [
-            "docker",
-            "exec",
-            "-it",
-            "-e",
-            "LANG=C.UTF-8",
-            "-e",
-            "TERM=xterm-256color",
-            "-e",
-            "COLORTERM=truecolor",
-            "-e",
-            "TERM_PROGRAM=viewer",
-            containerId,
-            "tmux",
-            "attach",
-            "-t",
-            name,
-          ],
-          {
-            terminal: {
-              cols: cols ?? 80,
-              rows: rows ?? 24,
-              name: "xterm-256color",
-              data(_terminal, data) {
-                const a = attachments.get(key);
-                if (a?.activeClient) {
-                  try {
-                    a.activeClient.send(Buffer.from(data).toString());
-                  } catch {
-                    // client may be closed
+          const exitCallbacks: Array<() => void> = [];
+
+          const proc = Bun.spawn(
+            [
+              "docker",
+              "exec",
+              "-it",
+              "-e",
+              "LANG=C.UTF-8",
+              "-e",
+              "TERM=xterm-256color",
+              "-e",
+              "COLORTERM=truecolor",
+              "-e",
+              "TERM_PROGRAM=viewer",
+              containerId,
+              "tmux",
+              "attach",
+              "-t",
+              name,
+            ],
+            {
+              terminal: {
+                cols: cols ?? 80,
+                rows: rows ?? 24,
+                name: "xterm-256color",
+                data(_terminal, data) {
+                  const a = attachments.get(key);
+                  if (a?.activeClient) {
+                    try {
+                      a.activeClient.send(Buffer.from(data).toString());
+                    } catch {
+                      // client may be closed
+                    }
                   }
-                }
+                },
+              },
+              // biome-ignore lint/style/noProcessEnv: Bun.spawn requires raw env for Docker exec
+              env: process.env,
+            },
+          );
+
+          const attachment: PtyAttachment = {
+            containerId,
+            tmuxSessionName: name,
+            taskId,
+            pty: {
+              write: (data: string) => proc.terminal.write(data),
+              resize: (c: number, r: number) => proc.terminal.resize(c, r),
+              kill: () => proc.kill(),
+              onExit: (cb: () => void) => {
+                exitCallbacks.push(cb);
               },
             },
-            // biome-ignore lint/style/noProcessEnv: Bun.spawn requires raw env for Docker exec
-            env: process.env,
-          },
-        );
+          };
 
-        const attachment: PtyAttachment = {
-          containerId,
-          tmuxSessionName: name,
-          taskId,
-          pty: {
-            write: (data: string) => proc.terminal.write(data),
-            resize: (c: number, r: number) => proc.terminal.resize(c, r),
-            kill: () => proc.kill(),
-            onExit: (cb: () => void) => {
-              exitCallbacks.push(cb);
-            },
-          },
-        };
+          attachments.set(key, attachment);
 
-        attachments.set(key, attachment);
-
-        proc.exited.then(() => {
-          for (const cb of exitCallbacks) {
-            try {
-              cb();
-            } catch {
-              // ignore
+          proc.exited.then(() => {
+            for (const cb of exitCallbacks) {
+              try {
+                cb();
+              } catch {
+                // ignore
+              }
             }
-          }
-          attachments.delete(key);
-        });
+            attachments.delete(key);
+          });
 
-        return attachment;
-      },
-      catch: (error) =>
-        new Error(error instanceof Error ? error.message : String(error)),
+          return attachment;
+        },
+        catch: (error) =>
+          new Error(error instanceof Error ? error.message : String(error)),
+      });
     });
 
   const getPtyAttachment = (containerId: string, name: string) =>
@@ -299,6 +307,13 @@ const LayerImpl = Effect.gen(function* () {
       }
     });
 
+  const reconfigureTmux = (containerId: string) =>
+    Effect.gen(function* () {
+      configuredContainers.delete(containerId);
+      yield* applyTmuxConfig(containerId);
+      return { applied: true };
+    });
+
   return {
     listTmuxSessions,
     ensureTmuxSession,
@@ -308,6 +323,7 @@ const LayerImpl = Effect.gen(function* () {
     detachPty,
     markPtyForCleanup,
     cancelPtyCleanup,
+    reconfigureTmux,
   };
 });
 

@@ -1,4 +1,4 @@
-import { Plus, RotateCw, SquareTerminal, X } from "lucide-react";
+import { Mouse, Plus, RotateCw, SquareTerminal, X } from "lucide-react";
 import { type FC, useCallback, useEffect, useRef, useState } from "react";
 import {
   Tooltip,
@@ -163,6 +163,16 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
     setActiveTabName("claude");
   }, []);
 
+  const fixScrolling = useCallback(async () => {
+    try {
+      await fetch(buildTerminalUrl(taskId, "/reconfigure"), {
+        method: "POST",
+      });
+    } catch {
+      // best-effort
+    }
+  }, [taskId]);
+
   // Auto-create Claude Code tab after initialization if none exists
   useEffect(() => {
     if (initialized && !tabs.some((t) => !t.closable)) {
@@ -226,6 +236,18 @@ export const TerminalPanel: FC<TerminalPanelProps> = ({ taskId, visible }) => {
             </button>
           </TooltipTrigger>
           <TooltipContent>New terminal</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              className="terminal-tab-new"
+              onClick={fixScrolling}
+            >
+              <Mouse className="size-3.5" />
+            </button>
+          </TooltipTrigger>
+          <TooltipContent>Fix scrolling</TooltipContent>
         </Tooltip>
       </div>
 

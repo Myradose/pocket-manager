@@ -231,6 +231,15 @@ export const routes = (app: HonoAppType, options: CliOptions) =>
           return response;
         })
 
+        .post("/api/tsk/tasks/:taskId/terminals/reconfigure", async (c) => {
+          const { taskId } = c.req.param();
+          const response = await effectToResponse(
+            c,
+            terminalController.reconfigureTmux({ taskId }),
+          );
+          return response;
+        })
+
         .get(
           "/api/tsk/tasks/:taskId/terminals/:name/ws",
           upgradeWebSocket((c) => {
